@@ -7,6 +7,12 @@ namespace TwentyFortyEight.UI
 {
     public sealed class GameController : MonoBehaviour
     {
+        private enum SelectionMode
+        {
+            None,
+            Kill
+        }
+
         [Header("Views")]
         [SerializeField] private BoardView boardView;
         [SerializeField] private ScoreView scoreView;
@@ -19,6 +25,7 @@ namespace TwentyFortyEight.UI
 
         private GameManager game;
         private int bestScore;
+        private SelectionMode selectionMode;
 
         private void Awake()
         {
@@ -26,14 +33,12 @@ namespace TwentyFortyEight.UI
 
             game = new GameManager();
             bestScore = 0;
+            selectionMode = SelectionMode.None;
         }
 
         private void OnEnable()
         {
-            if (newGameButton != null)
-            {
-                newGameButton.onClick.AddListener(StartNewGame);
-            }
+            newGameButton.onClick.AddListener(StartNewGame);
 
             if (undoButton != null)
             {
@@ -42,13 +47,15 @@ namespace TwentyFortyEight.UI
 
             if (killButton != null)
             {
-                killButton.onClick.AddListener(UseKillPlaceholder);
+                killButton.onClick.AddListener(ToggleKillSelection);
             }
 
             if (cullButton != null)
             {
                 cullButton.onClick.AddListener(UseCull);
             }
+
+            boardView.TileClicked += HandleTileClicked;
         }
 
         private void Start()
@@ -56,12 +63,34 @@ namespace TwentyFortyEight.UI
             RefreshAll();
         }
 
+        private void Update()
+        {
+            if (selectionMode != SelectionMode.None)
+            {
+                return;
+            }
+
+            if (Input.GetKeyDown(KeyCode.LeftArrow) || Input.GetKeyDown(KeyCode.A))
+            {
+                HandleMove(Direction.Left);
+            }
+            else if (Input.GetKeyDown(KeyCode.RightArrow) || Input.GetKeyDown(KeyCode.D))
+            {
+                HandleMove(Direction.Right);
+            }
+            else if (Input.GetKeyDown(KeyCode.UpArrow) || Input.GetKeyDown(KeyCode.W))
+            {
+                HandleMove(Direction.Up);
+            }
+            else if (Input.GetKeyDown(KeyCode.DownArrow) || Input.GetKeyDown(KeyCode.S))
+            {
+                HandleMove(Direction.Down);
+            }
+        }
+
         private void OnDisable()
         {
-            if (newGameButton != null)
-            {
-                newGameButton.onClick.RemoveListener(StartNewGame);
-            }
+            newGameButton.onClick.RemoveListener(StartNewGame);
 
             if (undoButton != null)
             {
@@ -70,23 +99,36 @@ namespace TwentyFortyEight.UI
 
             if (killButton != null)
             {
-                killButton.onClick.RemoveListener(UseKillPlaceholder);
+                killButton.onClick.RemoveListener(ToggleKillSelection);
             }
 
             if (cullButton != null)
             {
                 cullButton.onClick.RemoveListener(UseCull);
             }
+
+            if (boardView != null)
+            {
+                boardView.TileClicked -= HandleTileClicked;
+            }
         }
 
         public void StartNewGame()
         {
+            selectionMode = SelectionMode.None;
+
             game.StartNewGame();
             RefreshAll();
         }
 
         public void UseUndo()
         {
+            if (selectionMode != SelectionMode.None)
+            {
+                Debug.Log("Cannot undo while selecting a tile.");
+                return;
+            }
+
             GameActionResult result = game.UseUndoPowerup();
 
             Debug.Log(result.ToString());
@@ -96,6 +138,12 @@ namespace TwentyFortyEight.UI
 
         public void UseCull()
         {
+            if (selectionMode != SelectionMode.None)
+            {
+                Debug.Log("Cannot cull while selecting a tile.");
+                return;
+            }
+
             GameActionResult result = game.UseHalveAllPowerup();
 
             Debug.Log(result.ToString());
@@ -103,23 +151,54 @@ namespace TwentyFortyEight.UI
             RefreshAll();
         }
 
-        private void UseKillPlaceholder()
+        private void HandleMove(Direction direction)
         {
-            // Temporary placeholder until we implement tile selection.
-            // For now, remove the first occupied tile so we can verify
-            // that button → GameManager → BoardView flow works.
-            var occupiedPositions = game.Board.GetOccupiedPositions();
+            GameActionResult result = game.HandleMove(direction);
 
-            if (occupiedPositions.Count == 0)
+            Debug.Log(result.ToString());
+
+            RefreshAll();
+        }
+
+        private void ToggleKillSelection()
+        {
+            if (selectionMode == SelectionMode.Kill)
             {
-                Debug.Log("Kill placeholder: no occupied tiles to remove.");
+                selectionMode = SelectionMode.None;
+
+                Debug.Log("Kill selection cancelled.");
+
+                RefreshButtons();
                 return;
             }
 
-            CellPosition position = occupiedPositions[0];
+            bool hasTiles = game.Board.GetOccupiedPositions().Count > 0;
+
+            if (!hasTiles)
+            {
+                Debug.Log("Cannot kill: board has no occupied tiles.");
+                return;
+            }
+
+            selectionMode = SelectionMode.Kill;
+
+            Debug.Log("Kill mode active. Click a tile to remove it.");
+
+            RefreshButtons();
+        }
+
+        private void HandleTileClicked(CellPosition position)
+        {
+            if (selectionMode != SelectionMode.Kill)
+            {
+                return;
+            }
+
             GameActionResult result = game.UsePopPowerup(position);
 
             Debug.Log(result.ToString());
+
+            selectionMode = SelectionMode.None;
 
             RefreshAll();
         }
@@ -144,12 +223,13 @@ namespace TwentyFortyEight.UI
 
         private void RefreshButtons()
         {
+            bool hasTiles = game.Board.GetOccupiedPositions().Count > 0;
+            bool isSelecting = selectionMode != SelectionMode.None;
+
             if (undoButton != null)
             {
-                undoButton.interactable = game.CanUndo;
+                undoButton.interactable = !isSelecting && game.CanUndo;
             }
-
-            bool hasTiles = game.Board.GetOccupiedPositions().Count > 0;
 
             if (killButton != null)
             {
@@ -158,7 +238,7 @@ namespace TwentyFortyEight.UI
 
             if (cullButton != null)
             {
-                cullButton.interactable = hasTiles;
+                cullButton.interactable = !isSelecting && hasTiles;
             }
         }
 
@@ -184,35 +264,6 @@ namespace TwentyFortyEight.UI
                     "GameController is missing a New Game button reference."
                 );
             }
-        }
-
-        private void Update()
-        {
-            if (Input.GetKeyDown(KeyCode.LeftArrow) || Input.GetKeyDown(KeyCode.A))
-            {
-                HandleMove(Direction.Left);
-            }
-            else if (Input.GetKeyDown(KeyCode.RightArrow) || Input.GetKeyDown(KeyCode.D))
-            {
-                HandleMove(Direction.Right);
-            }
-            else if (Input.GetKeyDown(KeyCode.UpArrow) || Input.GetKeyDown(KeyCode.W))
-            {
-                HandleMove(Direction.Up);
-            }
-            else if (Input.GetKeyDown(KeyCode.DownArrow) || Input.GetKeyDown(KeyCode.S))
-            {
-                HandleMove(Direction.Down);
-            }
-        }
-
-        private void HandleMove(Direction direction)
-        {
-            GameActionResult result = game.HandleMove(direction);
-
-            Debug.Log(result.ToString());
-
-            RefreshAll();
         }
     }
 }
