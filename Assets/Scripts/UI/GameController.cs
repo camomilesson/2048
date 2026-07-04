@@ -23,9 +23,15 @@ namespace TwentyFortyEight.UI
         [SerializeField] private Button killButton;
         [SerializeField] private Button cullButton;
 
+        [Header("Swipe Input")]
+        [SerializeField] private float minimumSwipeDistance = 80f;
+        [SerializeField] private float swipeDirectionThreshold = 0.5f;
+
         private GameManager game;
         private int bestScore;
         private SelectionMode selectionMode;
+        private Vector2 pointerDownPosition;
+        private bool isPointerDown;
 
         private void Awake()
         {
@@ -70,22 +76,8 @@ namespace TwentyFortyEight.UI
                 return;
             }
 
-            if (Input.GetKeyDown(KeyCode.LeftArrow) || Input.GetKeyDown(KeyCode.A))
-            {
-                HandleMove(Direction.Left);
-            }
-            else if (Input.GetKeyDown(KeyCode.RightArrow) || Input.GetKeyDown(KeyCode.D))
-            {
-                HandleMove(Direction.Right);
-            }
-            else if (Input.GetKeyDown(KeyCode.UpArrow) || Input.GetKeyDown(KeyCode.W))
-            {
-                HandleMove(Direction.Up);
-            }
-            else if (Input.GetKeyDown(KeyCode.DownArrow) || Input.GetKeyDown(KeyCode.S))
-            {
-                HandleMove(Direction.Down);
-            }
+            HandleKeyboardInput();
+            HandlePointerInput();
         }
 
         private void OnDisable()
@@ -264,6 +256,113 @@ namespace TwentyFortyEight.UI
                     "GameController is missing a New Game button reference."
                 );
             }
+        }
+
+        private void HandleKeyboardInput()
+        {
+            if (Input.GetKeyDown(KeyCode.LeftArrow) || Input.GetKeyDown(KeyCode.A))
+            {
+                HandleMove(Direction.Left);
+            }
+            else if (Input.GetKeyDown(KeyCode.RightArrow) || Input.GetKeyDown(KeyCode.D))
+            {
+                HandleMove(Direction.Right);
+            }
+            else if (Input.GetKeyDown(KeyCode.UpArrow) || Input.GetKeyDown(KeyCode.W))
+            {
+                HandleMove(Direction.Up);
+            }
+            else if (Input.GetKeyDown(KeyCode.DownArrow) || Input.GetKeyDown(KeyCode.S))
+            {
+                HandleMove(Direction.Down);
+            }
+        }
+
+        private void HandlePointerInput()
+        {
+            if (Input.touchCount > 0)
+            {
+                Touch touch = Input.GetTouch(0);
+
+                if (touch.phase == TouchPhase.Began)
+                {
+                    BeginPointer(touch.position);
+                }
+                else if (
+                    touch.phase == TouchPhase.Ended ||
+                    touch.phase == TouchPhase.Canceled
+                )
+                {
+                    EndPointer(touch.position);
+                }
+
+                return;
+            }
+
+            if (Input.GetMouseButtonDown(0))
+            {
+                BeginPointer(Input.mousePosition);
+            }
+            else if (Input.GetMouseButtonUp(0))
+            {
+                EndPointer(Input.mousePosition);
+            }
+        }
+
+        private void BeginPointer(Vector2 screenPosition)
+        {
+            pointerDownPosition = screenPosition;
+            isPointerDown = true;
+        }
+
+        private void EndPointer(Vector2 screenPosition)
+        {
+            if (!isPointerDown)
+            {
+                return;
+            }
+
+            isPointerDown = false;
+
+            Vector2 delta = screenPosition - pointerDownPosition;
+
+            if (delta.magnitude < minimumSwipeDistance)
+            {
+                return;
+            }
+
+            Direction? direction = GetSwipeDirection(delta);
+
+            if (direction.HasValue)
+            {
+                HandleMove(direction.Value);
+            }
+        }
+
+        private Direction? GetSwipeDirection(Vector2 delta)
+        {
+            Vector2 normalized = delta.normalized;
+
+            if (Mathf.Abs(normalized.x) > Mathf.Abs(normalized.y))
+            {
+                if (Mathf.Abs(normalized.x) < swipeDirectionThreshold)
+                {
+                    return null;
+                }
+
+                return normalized.x > 0
+                    ? Direction.Right
+                    : Direction.Left;
+            }
+
+            if (Mathf.Abs(normalized.y) < swipeDirectionThreshold)
+            {
+                return null;
+            }
+
+            return normalized.y > 0
+                ? Direction.Up
+                : Direction.Down;
         }
     }
 }
