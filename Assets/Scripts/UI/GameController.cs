@@ -117,6 +117,7 @@ namespace TwentyFortyEight.UI
         {
             if (isStatsScreenOpen)
             {
+                ResetPointerState();
                 return;
             }
 
@@ -133,6 +134,7 @@ namespace TwentyFortyEight.UI
             HandleKeyboardInput();
             HandlePointerInput();
         }
+        
         private void OnDisable()
         {
             newGameButton.onClick.RemoveListener(StartNewGame);
@@ -468,6 +470,20 @@ namespace TwentyFortyEight.UI
 
         private void HandlePointerInput()
         {
+            if (suppressPointerInputUntilRelease)
+            {
+                bool hasActiveMousePress = Input.GetMouseButton(0);
+                bool hasActiveTouchPress = Input.touchCount > 0;
+
+                if (!hasActiveMousePress && !hasActiveTouchPress)
+                {
+                    suppressPointerInputUntilRelease = false;
+                    ResetPointerState();
+                }
+
+                return;
+            }
+            
             if (Input.touchCount > 0)
             {
                 Touch touch = Input.GetTouch(0);
@@ -577,6 +593,18 @@ namespace TwentyFortyEight.UI
                 ? Direction.Up
                 : Direction.Down;
         }
+    
+        private void ResetPointerState()
+        {
+            pointerDownPosition = Vector2.zero;
+            isPointerDown = false;
+        }
+
+        private void SuppressPointerInputUntilReleased()
+        {
+            ResetPointerState();
+            suppressPointerInputUntilRelease = true;
+        }
 
         public void ContinueAfterWin()
         {
@@ -592,6 +620,7 @@ namespace TwentyFortyEight.UI
             SaveStats();
 
             isStatsScreenOpen = true;
+            SuppressPointerInputUntilReleased();
 
             if (mainScreenRoot != null)
             {
@@ -617,6 +646,7 @@ namespace TwentyFortyEight.UI
             }
 
             isStatsScreenOpen = false;
+            SuppressPointerInputUntilReleased();
 
             RefreshAll();
         }
