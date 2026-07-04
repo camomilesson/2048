@@ -3,6 +3,7 @@ using TwentyFortyEight.Core;
 using UnityEngine;
 using UnityEngine.UI;
 using TwentyFortyEight.Persistence;
+using TwentyFortyEight.Stats;
 
 namespace TwentyFortyEight.UI
 {
@@ -31,6 +32,7 @@ namespace TwentyFortyEight.UI
 
         private GameManager game;
         private BestScoreStore bestScoreStore;
+        private StatsManager statsManager;
         private int bestScore;
         private SelectionMode selectionMode;
         private Vector2 pointerDownPosition;
@@ -42,8 +44,13 @@ namespace TwentyFortyEight.UI
             ValidateReferences();
 
             game = new GameManager();
+
             bestScoreStore = new BestScoreStore();
             bestScore = bestScoreStore.LoadBestScore();
+
+            statsManager = new StatsManager();
+            statsManager.SyncBestScore(bestScore);
+            statsManager.RecordGameStarted();
 
             selectionMode = SelectionMode.None;
         }
@@ -133,6 +140,9 @@ namespace TwentyFortyEight.UI
             selectionMode = SelectionMode.None;
 
             game.StartNewGame();
+
+            statsManager.RecordGameStarted();
+
             RefreshAll();
         }
 
@@ -147,6 +157,13 @@ namespace TwentyFortyEight.UI
             GameActionResult result = game.UseUndoPowerup();
 
             Debug.Log(result.ToString());
+
+            statsManager.RecordPowerupUse(
+                PowerupType.Undo,
+                result,
+                game.Board,
+                game.Score
+            );
 
             RefreshAll();
         }
@@ -163,6 +180,13 @@ namespace TwentyFortyEight.UI
 
             Debug.Log(result.ToString());
 
+            statsManager.RecordPowerupUse(
+                PowerupType.Nuke,
+                result,
+                game.Board,
+                game.Score
+            );
+
             RefreshAll();
         }
 
@@ -171,6 +195,12 @@ namespace TwentyFortyEight.UI
             GameActionResult result = game.HandleMove(direction);
 
             Debug.Log(result.ToString());
+
+            statsManager.RecordMove(
+                result,
+                game.Board,
+                game.Score
+            );
 
             RefreshAll();
         }
@@ -224,6 +254,13 @@ namespace TwentyFortyEight.UI
 
             Debug.Log(result.ToString());
 
+            statsManager.RecordPowerupUse(
+                PowerupType.Kill,
+                result,
+                game.Board,
+                game.Score
+            );
+
             selectionMode = SelectionMode.None;
 
             RefreshAll();
@@ -270,6 +307,8 @@ namespace TwentyFortyEight.UI
 
             bestScore = game.Score;
             bestScoreStore.SaveBestScore(bestScore);
+
+            statsManager.SyncBestScore(bestScore);
         }
 
         private void RefreshButtons()
