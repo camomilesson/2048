@@ -2,7 +2,6 @@ using System;
 using TwentyFortyEight.Core;
 using UnityEngine;
 using UnityEngine.UI;
-using TwentyFortyEight.Persistence;
 using TwentyFortyEight.Stats;
 
 namespace TwentyFortyEight.UI
@@ -31,9 +30,8 @@ namespace TwentyFortyEight.UI
         [SerializeField] private float swipeDirectionThreshold = 0.5f;
 
         private GameManager game;
-        private BestScoreStore bestScoreStore;
+        private StatsStore statsStore;
         private StatsManager statsManager;
-        private int bestScore;
         private SelectionMode selectionMode;
         private Vector2 pointerDownPosition;
         private bool isPointerDown;
@@ -45,12 +43,13 @@ namespace TwentyFortyEight.UI
 
             game = new GameManager();
 
-            bestScoreStore = new BestScoreStore();
-            bestScore = bestScoreStore.LoadBestScore();
+            statsStore = new StatsStore();
 
-            statsManager = new StatsManager();
-            statsManager.SyncBestScore(bestScore);
+            StatsData statsData = statsStore.Load();
+            statsManager = new StatsManager(statsData);
             statsManager.RecordGameStarted();
+
+            statsStore.Save(statsManager.Data);
 
             selectionMode = SelectionMode.None;
         }
@@ -271,7 +270,7 @@ namespace TwentyFortyEight.UI
             UpdateBestScore();
 
             boardView.Refresh(game.Board);
-            scoreView.SetScores(game.Score, bestScore);
+            scoreView.SetScores(game.Score, statsManager.Data.BestScore);
 
             RefreshButtons();
             RefreshGameStateOverlay();
@@ -300,15 +299,14 @@ namespace TwentyFortyEight.UI
 
         private void UpdateBestScore()
         {
-            if (game.Score <= bestScore)
+            int previousBestScore = statsManager.Data.BestScore;
+
+            statsManager.SyncBestScore(game.Score);
+
+            if (statsManager.Data.BestScore != previousBestScore)
             {
-                return;
+                statsStore.Save(statsManager.Data);
             }
-
-            bestScore = game.Score;
-            bestScoreStore.SaveBestScore(bestScore);
-
-            statsManager.SyncBestScore(bestScore);
         }
 
         private void RefreshButtons()
