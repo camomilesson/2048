@@ -185,5 +185,34 @@ namespace TwentyFortyEight.UI
                 );
             }
         }
+
+        private void Update()
+        {
+            if (Input.GetKeyDown(KeyCode.LeftArrow) || Input.GetKeyDown(KeyCode.A))
+            {
+                HandleMove(Direction.Left);
+            }
+            else if (Input.GetKeyDown(KeyCode.RightArrow) || Input.GetKeyDown(KeyCode.D))
+            {
+                HandleMove(Direction.Right);
+            }
+            else if (Input.GetKeyDown(KeyCode.UpArrow) || Input.GetKeyDown(KeyCode.W))
+            {
+                HandleMove(Direction.Up);
+            }
+            else if (Input.GetKeyDown(KeyCode.DownArrow) || Input.GetKeyDown(KeyCode.S))
+            {
+                HandleMove(Direction.Down);
+            }
+        }
+
+        private void HandleMove(Direction direction)
+        {
+            GameActionResult result = game.HandleMove(direction);
+
+            Debug.Log(result.ToString());
+
+            RefreshAll();
+        }
     }
 }
