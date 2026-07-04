@@ -4,6 +4,7 @@ namespace TwentyFortyEight.Core
     {
         Playing,
         Won,
+        OutOfMoves,
         GameOver
     }
 }

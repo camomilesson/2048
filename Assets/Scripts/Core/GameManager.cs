@@ -80,6 +80,14 @@ namespace TwentyFortyEight.Core
                 );
             }
 
+            if (Status == GameStatus.OutOfMoves)
+            {
+                return GameActionResult.NoChange(
+                    Status,
+                    "Cannot move: no regular moves remain. Use a powerup or start a new game."
+                );
+            }
+
             if (Status == GameStatus.Won)
             {
                 return GameActionResult.NoChange(
@@ -138,23 +146,24 @@ namespace TwentyFortyEight.Core
                 );
             }
 
-            if (!Board.HasAvailableMoves())
-            {
-                Status = GameStatus.GameOver;
-
-                return new GameActionResult(
-                    changed: true,
-                    scoreGained: 0,
-                    mergeCount: 0,
-                    spawnResult: TileSpawnResult.None(),
-                    reachedTargetThisAction: false,
-                    gameOverThisAction: true,
-                    status: Status,
-                    message: "No moves remain after continuing."
-                );
-            }
-
             Status = GameStatus.Playing;
+
+            bool gameOverThisAction = UpdateGameOverState();
+
+            string message;
+
+            if (Status == GameStatus.Playing)
+            {
+                message = "Continuing after win.";
+            }
+            else if (Status == GameStatus.OutOfMoves)
+            {
+                message = "Continuing after win, but no regular moves remain.";
+            }
+            else
+            {
+                message = "No moves or rescue powerups remain after continuing.";
+            }
 
             return new GameActionResult(
                 changed: true,
@@ -162,9 +171,9 @@ namespace TwentyFortyEight.Core
                 mergeCount: 0,
                 spawnResult: TileSpawnResult.None(),
                 reachedTargetThisAction: false,
-                gameOverThisAction: false,
+                gameOverThisAction: gameOverThisAction,
                 status: Status,
-                message: "Continuing after win."
+                message: message
             );
         }
 
@@ -312,7 +321,6 @@ namespace TwentyFortyEight.Core
                 );
             }
 
-            // IMPORTANT: snapshot BEFORE spending Nuke.
             previousSnapshot = CreateGameSnapshot();
 
             bool spent = PowerupCharges.TrySpend(PowerupType.Nuke);
@@ -358,6 +366,14 @@ namespace TwentyFortyEight.Core
                 status: Status,
                 message: "Nuke powerup used."
             );
+        }
+
+        private bool HasUsableRescuePowerup()
+        {
+            return
+                CanUseUndoPowerup() ||
+                CanUseKillPowerup() ||
+                CanUseNukePowerup();
         }
 
         public GameSnapshot CreateGameSnapshot()
@@ -415,11 +431,17 @@ namespace TwentyFortyEight.Core
 
             if (Board.HasAvailableMoves())
             {
-                if (Status == GameStatus.GameOver)
+                if (Status == GameStatus.GameOver || Status == GameStatus.OutOfMoves)
                 {
                     Status = GameStatus.Playing;
                 }
 
+                return false;
+            }
+
+            if (HasUsableRescuePowerup())
+            {
+                Status = GameStatus.OutOfMoves;
                 return false;
             }
 

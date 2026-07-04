@@ -314,12 +314,17 @@ namespace TwentyFortyEight.UI
         private void RefreshButtons()
         {
             bool isSelecting = selectionMode != SelectionMode.None;
-            bool isGameActive = game.Status == GameStatus.Playing;
+
+            bool canUsePowerups =
+                game.Status == GameStatus.Playing ||
+                game.Status == GameStatus.OutOfMoves;
 
             if (undoButtonView != null)
             {
                 undoButtonView.SetInteractable(
-                    isGameActive && !isSelecting && game.CanUseUndoPowerup()
+                    canUsePowerups &&
+                    !isSelecting &&
+                    game.CanUseUndoPowerup()
                 );
 
                 undoButtonView.SetChargeCount(
@@ -330,7 +335,8 @@ namespace TwentyFortyEight.UI
             if (killButtonView != null)
             {
                 killButtonView.SetInteractable(
-                    isGameActive && game.CanUseKillPowerup()
+                    canUsePowerups &&
+                    game.CanUseKillPowerup()
                 );
 
                 killButtonView.SetChargeCount(
@@ -341,7 +347,9 @@ namespace TwentyFortyEight.UI
             if (nukeButtonView != null)
             {
                 nukeButtonView.SetInteractable(
-                    isGameActive && !isSelecting && game.CanUseNukePowerup()
+                    canUsePowerups &&
+                    !isSelecting &&
+                    game.CanUseNukePowerup()
                 );
 
                 nukeButtonView.SetChargeCount(
