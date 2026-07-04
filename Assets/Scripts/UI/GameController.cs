@@ -2,7 +2,7 @@ using System;
 using TwentyFortyEight.Core;
 using UnityEngine;
 using UnityEngine.UI;
-using TMPro;
+using TwentyFortyEight.Persistence;
 
 namespace TwentyFortyEight.UI
 {
@@ -29,6 +29,7 @@ namespace TwentyFortyEight.UI
         [SerializeField] private float swipeDirectionThreshold = 0.5f;
 
         private GameManager game;
+        private BestScoreStore bestScoreStore;
         private int bestScore;
         private SelectionMode selectionMode;
         private Vector2 pointerDownPosition;
@@ -40,7 +41,9 @@ namespace TwentyFortyEight.UI
             ValidateReferences();
 
             game = new GameManager();
-            bestScore = 0;
+            bestScoreStore = new BestScoreStore();
+            bestScore = bestScoreStore.LoadBestScore();
+
             selectionMode = SelectionMode.None;
         }
 
@@ -220,10 +223,13 @@ namespace TwentyFortyEight.UI
 
         private void UpdateBestScore()
         {
-            if (game.Score > bestScore)
+            if (game.Score <= bestScore)
             {
-                bestScore = game.Score;
+                return;
             }
+
+            bestScore = game.Score;
+            bestScoreStore.SaveBestScore(bestScore);
         }
 
         private void RefreshButtons()
