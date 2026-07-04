@@ -49,7 +49,7 @@ namespace TwentyFortyEight.UI
             statsManager = new StatsManager(statsData);
             statsManager.RecordGameStarted();
 
-            statsStore.Save(statsManager.Data);
+            SaveStats();
 
             selectionMode = SelectionMode.None;
         }
@@ -141,6 +141,7 @@ namespace TwentyFortyEight.UI
             game.StartNewGame();
 
             statsManager.RecordGameStarted();
+            SaveStats();
 
             RefreshAll();
         }
@@ -164,6 +165,11 @@ namespace TwentyFortyEight.UI
                 game.Score
             );
 
+            if (result.Changed)
+            {
+                SaveStats();
+            }
+
             RefreshAll();
         }
 
@@ -186,6 +192,11 @@ namespace TwentyFortyEight.UI
                 game.Score
             );
 
+            if (result.Changed)
+            {
+                SaveStats();
+            }
+
             RefreshAll();
         }
 
@@ -200,6 +211,11 @@ namespace TwentyFortyEight.UI
                 game.Board,
                 game.Score
             );
+
+            if (result.Changed)
+            {
+                SaveStats();
+            }
 
             RefreshAll();
         }
@@ -260,6 +276,11 @@ namespace TwentyFortyEight.UI
                 game.Score
             );
 
+            if (result.Changed)
+            {
+                SaveStats();
+            }
+
             selectionMode = SelectionMode.None;
 
             RefreshAll();
@@ -305,8 +326,13 @@ namespace TwentyFortyEight.UI
 
             if (statsManager.Data.BestScore != previousBestScore)
             {
-                statsStore.Save(statsManager.Data);
+                SaveStats();
             }
+        }
+
+        private void SaveStats()
+        {
+            statsStore.Save(statsManager.Data);
         }
 
         private void RefreshButtons()
