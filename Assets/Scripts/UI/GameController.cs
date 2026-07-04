@@ -17,6 +17,7 @@ namespace TwentyFortyEight.UI
         [Header("Views")]
         [SerializeField] private BoardView boardView;
         [SerializeField] private ScoreView scoreView;
+        [SerializeField] private GameStateOverlayView gameStateOverlayView;
 
         [Header("Buttons")]
         [SerializeField] private Button newGameButton;
@@ -67,6 +68,12 @@ namespace TwentyFortyEight.UI
             }
 
             boardView.TileClicked += HandleTileClicked;
+
+            if (gameStateOverlayView != null)
+            {
+                gameStateOverlayView.ContinueClicked += ContinueAfterWin;
+                gameStateOverlayView.NewGameClicked += StartNewGame;
+            }
         }
 
         private void Start()
@@ -76,6 +83,11 @@ namespace TwentyFortyEight.UI
 
         private void Update()
         {
+            if (game.Status != GameStatus.Playing)
+            {
+                return;
+            }
+
             if (selectionMode != SelectionMode.None)
             {
                 return;
@@ -107,6 +119,12 @@ namespace TwentyFortyEight.UI
             if (boardView != null)
             {
                 boardView.TileClicked -= HandleTileClicked;
+            }
+
+            if (gameStateOverlayView != null)
+            {
+                gameStateOverlayView.ContinueClicked -= ContinueAfterWin;
+                gameStateOverlayView.NewGameClicked -= StartNewGame;
             }
         }
 
@@ -219,6 +237,28 @@ namespace TwentyFortyEight.UI
             scoreView.SetScores(game.Score, bestScore);
 
             RefreshButtons();
+            RefreshGameStateOverlay();
+        }
+
+        private void RefreshGameStateOverlay()
+        {
+            if (gameStateOverlayView == null)
+            {
+                return;
+            }
+
+            if (game.Status == GameStatus.Won)
+            {
+                gameStateOverlayView.ShowWin();
+            }
+            else if (game.Status == GameStatus.GameOver)
+            {
+                gameStateOverlayView.ShowGameOver();
+            }
+            else
+            {
+                gameStateOverlayView.Hide();
+            }
         }
 
         private void UpdateBestScore()
@@ -235,10 +275,14 @@ namespace TwentyFortyEight.UI
         private void RefreshButtons()
         {
             bool isSelecting = selectionMode != SelectionMode.None;
+            bool isGameActive = game.Status == GameStatus.Playing;
 
             if (undoButtonView != null)
             {
-                undoButtonView.SetInteractable(!isSelecting && game.CanUseUndoPowerup());
+                undoButtonView.SetInteractable(
+                    isGameActive && !isSelecting && game.CanUseUndoPowerup()
+                );
+
                 undoButtonView.SetChargeCount(
                     game.PowerupCharges.GetCharges(PowerupType.Undo)
                 );
@@ -246,7 +290,10 @@ namespace TwentyFortyEight.UI
 
             if (killButtonView != null)
             {
-                killButtonView.SetInteractable(game.CanUseKillPowerup());
+                killButtonView.SetInteractable(
+                    isGameActive && game.CanUseKillPowerup()
+                );
+
                 killButtonView.SetChargeCount(
                     game.PowerupCharges.GetCharges(PowerupType.Kill)
                 );
@@ -254,7 +301,10 @@ namespace TwentyFortyEight.UI
 
             if (nukeButtonView != null)
             {
-                nukeButtonView.SetInteractable(!isSelecting && game.CanUseNukePowerup());
+                nukeButtonView.SetInteractable(
+                    isGameActive && !isSelecting && game.CanUseNukePowerup()
+                );
+
                 nukeButtonView.SetChargeCount(
                     game.PowerupCharges.GetCharges(PowerupType.Nuke)
                 );
@@ -415,6 +465,15 @@ namespace TwentyFortyEight.UI
             return normalized.y > 0
                 ? Direction.Up
                 : Direction.Down;
+        }
+
+        public void ContinueAfterWin()
+        {
+            GameActionResult result = game.ContinueAfterWin();
+
+            Debug.Log(result.ToString());
+
+            RefreshAll();
         }
     }
 }
