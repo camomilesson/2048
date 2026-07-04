@@ -2,6 +2,7 @@ using System;
 using TwentyFortyEight.Core;
 using UnityEngine;
 using UnityEngine.UI;
+using TMPro;
 
 namespace TwentyFortyEight.UI
 {
@@ -19,9 +20,9 @@ namespace TwentyFortyEight.UI
 
         [Header("Buttons")]
         [SerializeField] private Button newGameButton;
-        [SerializeField] private Button undoButton;
-        [SerializeField] private Button killButton;
-        [SerializeField] private Button cullButton;
+        [SerializeField] private PowerupButtonView undoButtonView;
+        [SerializeField] private PowerupButtonView killButtonView;
+        [SerializeField] private PowerupButtonView nukeButtonView;
 
         [Header("Swipe Input")]
         [SerializeField] private float minimumSwipeDistance = 80f;
@@ -32,6 +33,7 @@ namespace TwentyFortyEight.UI
         private SelectionMode selectionMode;
         private Vector2 pointerDownPosition;
         private bool isPointerDown;
+        private bool suppressPointerInputUntilRelease;
 
         private void Awake()
         {
@@ -46,19 +48,19 @@ namespace TwentyFortyEight.UI
         {
             newGameButton.onClick.AddListener(StartNewGame);
 
-            if (undoButton != null)
+            if (undoButtonView != null && undoButtonView.Button != null)
             {
-                undoButton.onClick.AddListener(UseUndo);
+                undoButtonView.Button.onClick.AddListener(UseUndo);
             }
 
-            if (killButton != null)
+            if (killButtonView != null && killButtonView.Button != null)
             {
-                killButton.onClick.AddListener(ToggleKillSelection);
+                killButtonView.Button.onClick.AddListener(ToggleKillSelection);
             }
 
-            if (cullButton != null)
+            if (nukeButtonView != null && nukeButtonView.Button != null)
             {
-                cullButton.onClick.AddListener(UseCull);
+                nukeButtonView.Button.onClick.AddListener(UseNuke);
             }
 
             boardView.TileClicked += HandleTileClicked;
@@ -84,19 +86,19 @@ namespace TwentyFortyEight.UI
         {
             newGameButton.onClick.RemoveListener(StartNewGame);
 
-            if (undoButton != null)
+            if (undoButtonView != null && undoButtonView.Button != null)
             {
-                undoButton.onClick.RemoveListener(UseUndo);
+                undoButtonView.Button.onClick.RemoveListener(UseUndo);
             }
 
-            if (killButton != null)
+            if (killButtonView != null && killButtonView.Button != null)
             {
-                killButton.onClick.RemoveListener(ToggleKillSelection);
+                killButtonView.Button.onClick.RemoveListener(ToggleKillSelection);
             }
 
-            if (cullButton != null)
+            if (nukeButtonView != null && nukeButtonView.Button != null)
             {
-                cullButton.onClick.RemoveListener(UseCull);
+                nukeButtonView.Button.onClick.RemoveListener(UseNuke);
             }
 
             if (boardView != null)
@@ -128,15 +130,15 @@ namespace TwentyFortyEight.UI
             RefreshAll();
         }
 
-        public void UseCull()
+        public void UseNuke()
         {
             if (selectionMode != SelectionMode.None)
             {
-                Debug.Log("Cannot cull while selecting a tile.");
+                Debug.Log("Cannot nuke while selecting a tile.");
                 return;
             }
 
-            GameActionResult result = game.UseHalveAllPowerup();
+            GameActionResult result = game.UseNukePowerup();
 
             Debug.Log(result.ToString());
 
@@ -164,6 +166,12 @@ namespace TwentyFortyEight.UI
                 return;
             }
 
+            if (!game.PowerupCharges.CanUse(PowerupType.Kill))
+            {
+                Debug.Log("Cannot kill: no Kill charges.");
+                return;
+            }
+
             bool hasTiles = game.Board.GetOccupiedPositions().Count > 0;
 
             if (!hasTiles)
@@ -173,6 +181,8 @@ namespace TwentyFortyEight.UI
             }
 
             selectionMode = SelectionMode.Kill;
+            isPointerDown = false;
+            suppressPointerInputUntilRelease = true;
 
             Debug.Log("Kill mode active. Click a tile to remove it.");
 
@@ -181,12 +191,15 @@ namespace TwentyFortyEight.UI
 
         private void HandleTileClicked(CellPosition position)
         {
+            suppressPointerInputUntilRelease = true;
+            isPointerDown = false;
+
             if (selectionMode != SelectionMode.Kill)
             {
                 return;
             }
 
-            GameActionResult result = game.UsePopPowerup(position);
+            GameActionResult result = game.UseKillPowerup(position);
 
             Debug.Log(result.ToString());
 
@@ -215,22 +228,30 @@ namespace TwentyFortyEight.UI
 
         private void RefreshButtons()
         {
-            bool hasTiles = game.Board.GetOccupiedPositions().Count > 0;
             bool isSelecting = selectionMode != SelectionMode.None;
 
-            if (undoButton != null)
+            if (undoButtonView != null)
             {
-                undoButton.interactable = !isSelecting && game.CanUndo;
+                undoButtonView.SetInteractable(!isSelecting && game.CanUseUndoPowerup());
+                undoButtonView.SetChargeCount(
+                    game.PowerupCharges.GetCharges(PowerupType.Undo)
+                );
             }
 
-            if (killButton != null)
+            if (killButtonView != null)
             {
-                killButton.interactable = hasTiles;
+                killButtonView.SetInteractable(game.CanUseKillPowerup());
+                killButtonView.SetChargeCount(
+                    game.PowerupCharges.GetCharges(PowerupType.Kill)
+                );
             }
 
-            if (cullButton != null)
+            if (nukeButtonView != null)
             {
-                cullButton.interactable = !isSelecting && hasTiles;
+                nukeButtonView.SetInteractable(!isSelecting && game.CanUseNukePowerup());
+                nukeButtonView.SetChargeCount(
+                    game.PowerupCharges.GetCharges(PowerupType.Nuke)
+                );
             }
         }
 
@@ -284,6 +305,20 @@ namespace TwentyFortyEight.UI
             {
                 Touch touch = Input.GetTouch(0);
 
+                if (suppressPointerInputUntilRelease)
+                {
+                    if (
+                        touch.phase == TouchPhase.Ended ||
+                        touch.phase == TouchPhase.Canceled
+                    )
+                    {
+                        suppressPointerInputUntilRelease = false;
+                        isPointerDown = false;
+                    }
+
+                    return;
+                }
+
                 if (touch.phase == TouchPhase.Began)
                 {
                     BeginPointer(touch.position);
@@ -294,6 +329,17 @@ namespace TwentyFortyEight.UI
                 )
                 {
                     EndPointer(touch.position);
+                }
+
+                return;
+            }
+
+            if (suppressPointerInputUntilRelease)
+            {
+                if (Input.GetMouseButtonUp(0))
+                {
+                    suppressPointerInputUntilRelease = false;
+                    isPointerDown = false;
                 }
 
                 return;

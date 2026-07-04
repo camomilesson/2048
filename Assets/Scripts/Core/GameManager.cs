@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 
 namespace TwentyFortyEight.Core
 {
@@ -8,21 +9,32 @@ namespace TwentyFortyEight.Core
 
         private readonly MoveResolver moveResolver;
         private readonly TileSpawner tileSpawner;
+        private readonly PowerupRewardSystem powerupRewardSystem;
 
         private GameSnapshot previousSnapshot;
 
         public BoardModel Board { get; }
+        public PowerupCharges PowerupCharges { get; }
+
         public int Score { get; private set; }
         public int TargetTileValue { get; }
         public bool HasReachedTarget { get; private set; }
         public GameStatus Status { get; private set; }
 
-        public bool CanUndo => previousSnapshot != null;
+        public bool CanUndo
+        {
+            get
+            {
+                return previousSnapshot != null;
+            }
+        }
 
         public GameManager(
             BoardModel board = null,
             MoveResolver moveResolver = null,
             TileSpawner tileSpawner = null,
+            PowerupCharges powerupCharges = null,
+            PowerupRewardSystem powerupRewardSystem = null,
             int targetTileValue = DefaultTargetTileValue
         )
         {
@@ -37,6 +49,9 @@ namespace TwentyFortyEight.Core
             Board = board ?? new BoardModel();
             this.moveResolver = moveResolver ?? new MoveResolver();
             this.tileSpawner = tileSpawner ?? new TileSpawner();
+            PowerupCharges = powerupCharges ?? new PowerupCharges();
+            this.powerupRewardSystem = powerupRewardSystem ?? new PowerupRewardSystem();
+
             TargetTileValue = targetTileValue;
 
             StartNewGame();
@@ -45,6 +60,7 @@ namespace TwentyFortyEight.Core
         public void StartNewGame()
         {
             Board.Clear();
+            PowerupCharges.Reset();
 
             Score = 0;
             HasReachedTarget = false;
@@ -88,6 +104,12 @@ namespace TwentyFortyEight.Core
 
             Score += moveResult.ScoreGained;
 
+            IReadOnlyList<PowerupType> earnedPowerups =
+                powerupRewardSystem.GrantRewardsForMergeValues(
+                    moveResult.CreatedMergeValues,
+                    PowerupCharges
+                );
+
             TileSpawnResult spawnResult = tileSpawner.SpawnRandomTile(Board);
 
             bool reachedTargetThisAction = UpdateReachedTargetState();
@@ -101,7 +123,8 @@ namespace TwentyFortyEight.Core
                 reachedTargetThisAction: reachedTargetThisAction,
                 gameOverThisAction: gameOverThisAction,
                 status: Status,
-                message: "Move handled."
+                message: "Move handled.",
+                earnedPowerups: earnedPowerups
             );
         }
 
@@ -145,6 +168,27 @@ namespace TwentyFortyEight.Core
             );
         }
 
+        public bool CanUseUndoPowerup()
+        {
+            return
+                previousSnapshot != null &&
+                previousSnapshot.PowerupCharges.UndoCharges > 0;
+        }
+
+        public bool CanUseKillPowerup()
+        {
+            return
+                PowerupCharges.CanUse(PowerupType.Kill) &&
+                Board.GetOccupiedPositions().Count > 0;
+        }
+
+        public bool CanUseNukePowerup()
+        {
+            return
+                PowerupCharges.CanUse(PowerupType.Nuke) &&
+                Board.GetOccupiedPositions().Count > 0;
+        }
+
         public GameActionResult UseUndoPowerup()
         {
             if (previousSnapshot == null)
@@ -155,7 +199,25 @@ namespace TwentyFortyEight.Core
                 );
             }
 
+            if (previousSnapshot.PowerupCharges.UndoCharges <= 0)
+            {
+                return GameActionResult.NoChange(
+                    Status,
+                    "Cannot undo: no Undo charge was available before this action."
+                );
+            }
+
             RestoreGameSnapshot(previousSnapshot);
+
+            bool spent = PowerupCharges.TrySpend(PowerupType.Undo);
+
+            if (!spent)
+            {
+                throw new InvalidOperationException(
+                    "Failed to spend Undo charge after restoring a snapshot that had one."
+                );
+            }
+
             previousSnapshot = null;
 
             return new GameActionResult(
@@ -170,13 +232,13 @@ namespace TwentyFortyEight.Core
             );
         }
 
-        public GameActionResult UsePopPowerup(CellPosition position)
+        public GameActionResult UseKillPowerup(CellPosition position)
         {
             if (Status == GameStatus.Won)
             {
                 return GameActionResult.NoChange(
                     Status,
-                    "Cannot use pop: game is waiting after win. Call ContinueAfterWin first."
+                    "Cannot use kill: game is waiting after win. Call ContinueAfterWin first."
                 );
             }
 
@@ -184,15 +246,33 @@ namespace TwentyFortyEight.Core
             {
                 return GameActionResult.NoChange(
                     Status,
-                    $"Cannot pop: no tile at {position}."
+                    $"Cannot kill: no tile at {position}."
                 );
             }
 
+            if (!PowerupCharges.CanUse(PowerupType.Kill))
+            {
+                return GameActionResult.NoChange(
+                    Status,
+                    "Cannot kill: no Kill charges."
+                );
+            }
+
+            // IMPORTANT: snapshot BEFORE spending Kill.
             previousSnapshot = CreateGameSnapshot();
+
+            bool spent = PowerupCharges.TrySpend(PowerupType.Kill);
+
+            if (!spent)
+            {
+                throw new InvalidOperationException(
+                    "Failed to spend Kill charge after confirming one was available."
+                );
+            }
 
             Board.ClearCell(position);
 
-            bool gameOverThisAction = false;
+            bool gameOverThisAction = UpdateGameOverState();
 
             return new GameActionResult(
                 changed: true,
@@ -202,17 +282,17 @@ namespace TwentyFortyEight.Core
                 reachedTargetThisAction: false,
                 gameOverThisAction: gameOverThisAction,
                 status: Status,
-                message: $"Popped tile at {position}."
+                message: $"Killed tile at {position}."
             );
         }
 
-        public GameActionResult UseHalveAllPowerup()
+        public GameActionResult UseNukePowerup()
         {
             if (Status == GameStatus.Won)
             {
                 return GameActionResult.NoChange(
                     Status,
-                    "Cannot use halve: game is waiting after win. Call ContinueAfterWin first."
+                    "Cannot use nuke: game is waiting after win. Call ContinueAfterWin first."
                 );
             }
 
@@ -220,11 +300,29 @@ namespace TwentyFortyEight.Core
             {
                 return GameActionResult.NoChange(
                     Status,
-                    "Cannot halve: board is empty."
+                    "Cannot nuke: board is empty."
                 );
             }
 
+            if (!PowerupCharges.CanUse(PowerupType.Nuke))
+            {
+                return GameActionResult.NoChange(
+                    Status,
+                    "Cannot nuke: no Nuke charges."
+                );
+            }
+
+            // IMPORTANT: snapshot BEFORE spending Nuke.
             previousSnapshot = CreateGameSnapshot();
+
+            bool spent = PowerupCharges.TrySpend(PowerupType.Nuke);
+
+            if (!spent)
+            {
+                throw new InvalidOperationException(
+                    "Failed to spend Nuke charge after confirming one was available."
+                );
+            }
 
             for (int row = 0; row < Board.Size; row++)
             {
@@ -258,7 +356,7 @@ namespace TwentyFortyEight.Core
                 reachedTargetThisAction: false,
                 gameOverThisAction: gameOverThisAction,
                 status: Status,
-                message: "Halve-all powerup used."
+                message: "Nuke powerup used."
             );
         }
 
@@ -266,6 +364,7 @@ namespace TwentyFortyEight.Core
         {
             return new GameSnapshot(
                 Board.CreateSnapshot(),
+                PowerupCharges.CreateSnapshot(),
                 Score,
                 HasReachedTarget,
                 Status
@@ -280,6 +379,8 @@ namespace TwentyFortyEight.Core
             }
 
             Board.RestoreSnapshot(snapshot.Board);
+            PowerupCharges.RestoreSnapshot(snapshot.PowerupCharges);
+
             Score = snapshot.Score;
             HasReachedTarget = snapshot.HasReachedTarget;
             Status = snapshot.Status;

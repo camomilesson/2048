@@ -1,9 +1,13 @@
 using System;
+using System.Collections.Generic;
+using System.Text;
 
 namespace TwentyFortyEight.Core
 {
     public sealed class GameActionResult
     {
+        private readonly List<PowerupType> earnedPowerups;
+
         public bool Changed { get; }
         public int ScoreGained { get; }
         public int MergeCount { get; }
@@ -13,6 +17,14 @@ namespace TwentyFortyEight.Core
         public GameStatus Status { get; }
         public string Message { get; }
 
+        public IReadOnlyList<PowerupType> EarnedPowerups
+        {
+            get
+            {
+                return earnedPowerups;
+            }
+        }
+
         public GameActionResult(
             bool changed,
             int scoreGained,
@@ -21,7 +33,8 @@ namespace TwentyFortyEight.Core
             bool reachedTargetThisAction,
             bool gameOverThisAction,
             GameStatus status,
-            string message
+            string message,
+            IReadOnlyList<PowerupType> earnedPowerups = null
         )
         {
             if (scoreGained < 0)
@@ -48,6 +61,10 @@ namespace TwentyFortyEight.Core
             GameOverThisAction = gameOverThisAction;
             Status = status;
             Message = message ?? string.Empty;
+
+            this.earnedPowerups = earnedPowerups == null
+                ? new List<PowerupType>()
+                : new List<PowerupType>(earnedPowerups);
         }
 
         public static GameActionResult NoChange(
@@ -69,14 +86,32 @@ namespace TwentyFortyEight.Core
 
         public override string ToString()
         {
-            return
-                $"Changed={Changed}, " +
-                $"ScoreGained={ScoreGained}, " +
-                $"MergeCount={MergeCount}, " +
-                $"ReachedTarget={ReachedTargetThisAction}, " +
-                $"GameOver={GameOverThisAction}, " +
-                $"Status={Status}, " +
-                $"Message=\"{Message}\"";
+            StringBuilder builder = new StringBuilder();
+
+            builder.Append($"Changed={Changed}, ");
+            builder.Append($"ScoreGained={ScoreGained}, ");
+            builder.Append($"MergeCount={MergeCount}, ");
+            builder.Append($"ReachedTarget={ReachedTargetThisAction}, ");
+            builder.Append($"GameOver={GameOverThisAction}, ");
+            builder.Append($"Status={Status}, ");
+            builder.Append($"Message=\"{Message}\"");
+
+            if (earnedPowerups.Count > 0)
+            {
+                builder.Append(", EarnedPowerups=");
+
+                for (int i = 0; i < earnedPowerups.Count; i++)
+                {
+                    if (i > 0)
+                    {
+                        builder.Append(", ");
+                    }
+
+                    builder.Append(earnedPowerups[i]);
+                }
+            }
+
+            return builder.ToString();
         }
     }
 }

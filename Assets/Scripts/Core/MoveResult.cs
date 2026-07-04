@@ -1,19 +1,31 @@
 using System;
+using System.Collections.Generic;
 
 namespace TwentyFortyEight.Core
 {
     public sealed class MoveResult
     {
+        private readonly List<int> createdMergeValues;
+
         public Direction Direction { get; }
         public bool Changed { get; }
         public int ScoreGained { get; }
         public int MergeCount { get; }
 
+        public IReadOnlyList<int> CreatedMergeValues
+        {
+            get
+            {
+                return createdMergeValues;
+            }
+        }
+
         public MoveResult(
             Direction direction,
             bool changed,
             int scoreGained,
-            int mergeCount
+            int mergeCount,
+            IReadOnlyList<int> createdMergeValues
         )
         {
             if (scoreGained < 0)
@@ -36,6 +48,10 @@ namespace TwentyFortyEight.Core
             Changed = changed;
             ScoreGained = scoreGained;
             MergeCount = mergeCount;
+
+            this.createdMergeValues = createdMergeValues == null
+                ? new List<int>()
+                : new List<int>(createdMergeValues);
         }
 
         public override string ToString()

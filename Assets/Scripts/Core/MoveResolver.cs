@@ -15,6 +15,7 @@ namespace TwentyFortyEight.Core
             bool changed = false;
             int totalScoreGained = 0;
             int totalMergeCount = 0;
+            List<int> createdMergeValues = new List<int>();
 
             for (int lineIndex = 0; lineIndex < board.Size; lineIndex++)
             {
@@ -30,13 +31,15 @@ namespace TwentyFortyEight.Core
 
                 totalScoreGained += lineResult.ScoreGained;
                 totalMergeCount += lineResult.MergeCount;
+                createdMergeValues.AddRange(lineResult.CreatedMergeValues);
             }
 
             return new MoveResult(
                 direction,
                 changed,
                 totalScoreGained,
-                totalMergeCount
+                totalMergeCount,
+                createdMergeValues
             );
         }
 
@@ -71,7 +74,8 @@ namespace TwentyFortyEight.Core
             return new LineResult(
                 changed,
                 mergeResult.ScoreGained,
-                mergeResult.MergeCount
+                mergeResult.MergeCount,
+                mergeResult.CreatedMergeValues
             );
         }
 
@@ -99,6 +103,8 @@ namespace TwentyFortyEight.Core
         private static LineMergeResult MergeLine(List<LineEntry> inputEntries)
         {
             List<OutputSlot> outputSlots = new List<OutputSlot>();
+            List<int> createdMergeValues = new List<int>();
+
             int scoreGained = 0;
             int mergeCount = 0;
 
@@ -113,8 +119,11 @@ namespace TwentyFortyEight.Core
                     previousSlot.Tile.Value *= 2;
                     previousSlot.HasMergedThisMove = true;
 
-                    scoreGained += previousSlot.Tile.Value;
+                    int createdValue = previousSlot.Tile.Value;
+
+                    scoreGained += createdValue;
                     mergeCount++;
+                    createdMergeValues.Add(createdValue);
 
                     continue;
                 }
@@ -124,7 +133,12 @@ namespace TwentyFortyEight.Core
                 );
             }
 
-            return new LineMergeResult(outputSlots, scoreGained, mergeCount);
+            return new LineMergeResult(
+                outputSlots,
+                scoreGained,
+                mergeCount,
+                createdMergeValues
+            );
         }
 
         private static bool CanMergeWithPreviousOutputSlot(
@@ -231,15 +245,20 @@ namespace TwentyFortyEight.Core
             public List<OutputSlot> OutputSlots { get; }
             public int ScoreGained { get; }
             public int MergeCount { get; }
+            public List<int> CreatedMergeValues { get; }
 
             public LineMergeResult(
                 List<OutputSlot> outputSlots,
                 int scoreGained,
-                int mergeCount
+                int mergeCount,
+                List<int> createdMergeValues
             )
             {
                 OutputSlots = outputSlots ??
                     throw new ArgumentNullException(nameof(outputSlots));
+
+                CreatedMergeValues = createdMergeValues ??
+                    throw new ArgumentNullException(nameof(createdMergeValues));
 
                 ScoreGained = scoreGained;
                 MergeCount = mergeCount;
@@ -251,13 +270,18 @@ namespace TwentyFortyEight.Core
             public bool Changed { get; }
             public int ScoreGained { get; }
             public int MergeCount { get; }
+            public List<int> CreatedMergeValues { get; }
 
             public LineResult(
                 bool changed,
                 int scoreGained,
-                int mergeCount
+                int mergeCount,
+                List<int> createdMergeValues
             )
             {
+                CreatedMergeValues = createdMergeValues ??
+                    throw new ArgumentNullException(nameof(createdMergeValues));
+
                 Changed = changed;
                 ScoreGained = scoreGained;
                 MergeCount = mergeCount;
