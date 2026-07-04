@@ -5,9 +5,9 @@ namespace TwentyFortyEight.Core
 {
     public sealed class PowerupRewardSystem
     {
-        public const int UndoRewardTileValue = 1024;
-        public const int KillRewardTileValue = 2048;
-        public const int NukeRewardTileValue = 4096;
+        public const int UndoRewardTileValue = 8;
+        public const int KillRewardTileValue = 16;
+        public const int NukeRewardTileValue = 32;
 
         public IReadOnlyList<PowerupType> GrantRewardsForMergeValues(
             IReadOnlyList<int> createdMergeValues,

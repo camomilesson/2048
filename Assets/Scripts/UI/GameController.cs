@@ -14,6 +14,10 @@ namespace TwentyFortyEight.UI
             Kill
         }
 
+        [Header("Screens")]
+        [SerializeField] private GameObject mainScreenRoot;
+        [SerializeField] private StatsScreenView statsScreenView;
+
         [Header("Views")]
         [SerializeField] private BoardView boardView;
         [SerializeField] private ScoreView scoreView;
@@ -24,6 +28,7 @@ namespace TwentyFortyEight.UI
         [SerializeField] private PowerupButtonView undoButtonView;
         [SerializeField] private PowerupButtonView killButtonView;
         [SerializeField] private PowerupButtonView nukeButtonView;
+        [SerializeField] private Button statsButton;
 
         [Header("Swipe Input")]
         [SerializeField] private float minimumSwipeDistance = 80f;
@@ -36,6 +41,7 @@ namespace TwentyFortyEight.UI
         private Vector2 pointerDownPosition;
         private bool isPointerDown;
         private bool suppressPointerInputUntilRelease;
+        private bool isStatsScreenOpen;
 
         private void Awake()
         {
@@ -80,15 +86,40 @@ namespace TwentyFortyEight.UI
                 gameStateOverlayView.ContinueClicked += ContinueAfterWin;
                 gameStateOverlayView.NewGameClicked += StartNewGame;
             }
+
+            if (statsButton != null)
+            {
+                statsButton.onClick.AddListener(ShowStatsScreen);
+            }
+
+            if (statsScreenView != null)
+            {
+                statsScreenView.BackClicked += HideStatsScreen;
+            }
         }
 
         private void Start()
         {
+            if (mainScreenRoot != null)
+            {
+                mainScreenRoot.SetActive(true);
+            }
+
+            if (statsScreenView != null)
+            {
+                statsScreenView.Hide();
+            }
+
             RefreshAll();
         }
 
         private void Update()
         {
+            if (isStatsScreenOpen)
+            {
+                return;
+            }
+
             if (game.Status != GameStatus.Playing)
             {
                 return;
@@ -102,7 +133,6 @@ namespace TwentyFortyEight.UI
             HandleKeyboardInput();
             HandlePointerInput();
         }
-
         private void OnDisable()
         {
             newGameButton.onClick.RemoveListener(StartNewGame);
@@ -131,6 +161,16 @@ namespace TwentyFortyEight.UI
             {
                 gameStateOverlayView.ContinueClicked -= ContinueAfterWin;
                 gameStateOverlayView.NewGameClicked -= StartNewGame;
+            }
+
+            if (statsButton != null)
+            {
+                statsButton.onClick.RemoveListener(ShowStatsScreen);
+            }
+
+            if (statsScreenView != null)
+            {
+                statsScreenView.BackClicked -= HideStatsScreen;
             }
         }
 
@@ -543,6 +583,40 @@ namespace TwentyFortyEight.UI
             GameActionResult result = game.ContinueAfterWin();
 
             Debug.Log(result.ToString());
+
+            RefreshAll();
+        }
+
+        private void ShowStatsScreen()
+        {
+            SaveStats();
+
+            isStatsScreenOpen = true;
+
+            if (mainScreenRoot != null)
+            {
+                mainScreenRoot.SetActive(false);
+            }
+
+            if (statsScreenView != null)
+            {
+                statsScreenView.Show(statsManager.Data);
+            }
+        }
+
+        private void HideStatsScreen()
+        {
+            if (statsScreenView != null)
+            {
+                statsScreenView.Hide();
+            }
+
+            if (mainScreenRoot != null)
+            {
+                mainScreenRoot.SetActive(true);
+            }
+
+            isStatsScreenOpen = false;
 
             RefreshAll();
         }
