@@ -3,6 +3,7 @@ using TwentyFortyEight.Core;
 using UnityEngine;
 using UnityEngine.UI;
 using TwentyFortyEight.Stats;
+using TwentyFortyEight.Persistence;
 
 namespace TwentyFortyEight.UI
 {
@@ -37,6 +38,7 @@ namespace TwentyFortyEight.UI
         private GameManager game;
         private StatsStore statsStore;
         private StatsManager statsManager;
+        private GameStateStore gameStateStore;
         private SelectionMode selectionMode;
         private Vector2 pointerDownPosition;
         private bool isPointerDown;
@@ -47,15 +49,27 @@ namespace TwentyFortyEight.UI
         {
             ValidateReferences();
 
-            game = new GameManager();
-
             statsStore = new StatsStore();
 
             StatsData statsData = statsStore.Load();
             statsManager = new StatsManager(statsData);
-            statsManager.RecordGameStarted();
 
-            SaveStats();
+            game = new GameManager();
+
+            gameStateStore = new GameStateStore();
+
+            bool loadedSavedGame = gameStateStore.TryLoad(out GameSnapshot savedSnapshot);
+
+            if (loadedSavedGame)
+            {
+                game.RestoreFromSnapshot(savedSnapshot);
+            }
+            else
+            {
+                statsManager.RecordGameStarted();
+                SaveStats();
+                SaveCurrentGame();
+            }
 
             selectionMode = SelectionMode.None;
         }
@@ -183,7 +197,8 @@ namespace TwentyFortyEight.UI
             game.StartNewGame();
 
             statsManager.RecordGameStarted();
-            SaveStats();
+
+            SaveAll();
 
             RefreshAll();
         }
@@ -209,7 +224,7 @@ namespace TwentyFortyEight.UI
 
             if (result.Changed)
             {
-                SaveStats();
+                SaveAll();
             }
 
             RefreshAll();
@@ -236,7 +251,7 @@ namespace TwentyFortyEight.UI
 
             if (result.Changed)
             {
-                SaveStats();
+                SaveAll();
             }
 
             RefreshAll();
@@ -256,7 +271,7 @@ namespace TwentyFortyEight.UI
 
             if (result.Changed)
             {
-                SaveStats();
+                SaveAll();
             }
 
             RefreshAll();
@@ -320,7 +335,7 @@ namespace TwentyFortyEight.UI
 
             if (result.Changed)
             {
-                SaveStats();
+                SaveAll();
             }
 
             selectionMode = SelectionMode.None;
@@ -375,6 +390,17 @@ namespace TwentyFortyEight.UI
         private void SaveStats()
         {
             statsStore.Save(statsManager.Data);
+        }
+
+        private void SaveCurrentGame()
+        {
+            gameStateStore.Save(game);
+        }
+
+        private void SaveAll()
+        {
+            SaveStats();
+            SaveCurrentGame();
         }
 
         private void RefreshButtons()
@@ -612,6 +638,11 @@ namespace TwentyFortyEight.UI
 
             Debug.Log(result.ToString());
 
+            if (result.Changed)
+            {
+                SaveCurrentGame();
+            }
+
             RefreshAll();
         }
 
@@ -649,6 +680,21 @@ namespace TwentyFortyEight.UI
             SuppressPointerInputUntilReleased();
 
             RefreshAll();
+        }
+
+        private void OnApplicationPause(bool pauseStatus)
+        {
+            if (!pauseStatus)
+            {
+                return;
+            }
+
+            SaveAll();
+        }
+
+        private void OnApplicationQuit()
+        {
+            SaveAll();
         }
     }
 }

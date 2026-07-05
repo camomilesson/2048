@@ -387,6 +387,15 @@ namespace TwentyFortyEight.Core
             );
         }
 
+        public void RestoreFromSnapshot(GameSnapshot snapshot)
+        {
+            RestoreGameSnapshot(snapshot);
+
+            previousSnapshot = null;
+
+            UpdateGameOverState();
+        }
+
         private void RestoreGameSnapshot(GameSnapshot snapshot)
         {
             if (snapshot == null)
