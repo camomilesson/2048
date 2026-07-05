@@ -12,6 +12,11 @@ namespace TwentyFortyEight.UI
         [SerializeField] private TextMeshProUGUI valueText;
         [SerializeField] private Button button;
 
+        [Header("Visuals")]
+        [SerializeField] private TileVisualLibrary tileVisualLibrary;
+        [SerializeField] private Color numberTextColor =
+            new Color32(70, 45, 30, 255);
+
         private CellPosition position;
 
         public CellPosition Position
@@ -69,17 +74,10 @@ namespace TwentyFortyEight.UI
             if (valueText != null)
             {
                 valueText.text = value.ToString();
+                valueText.color = numberTextColor;
             }
 
-            if (backgroundImage != null)
-            {
-                backgroundImage.color = GetBackgroundColor(value);
-            }
-
-            if (valueText != null)
-            {
-                valueText.color = GetTextColor(value);
-            }
+            ApplySpriteForValue(value);
         }
 
         public void SetInteractable(bool interactable)
@@ -90,61 +88,52 @@ namespace TwentyFortyEight.UI
             }
         }
 
+        private void ApplySpriteForValue(int value)
+        {
+            if (backgroundImage == null)
+            {
+                return;
+            }
+
+            Sprite sprite = tileVisualLibrary != null
+                ? tileVisualLibrary.GetSpriteForValue(value)
+                : null;
+
+            if (sprite != null)
+            {
+                backgroundImage.sprite = sprite;
+                backgroundImage.color = Color.white;
+                backgroundImage.type = Image.Type.Simple;
+                backgroundImage.preserveAspect = true;
+                return;
+            }
+
+            backgroundImage.sprite = null;
+            backgroundImage.color = GetFallbackBackgroundColor(value);
+        }
+
         private void HandleClick()
         {
             Clicked?.Invoke(position);
         }
 
-        private static Color GetBackgroundColor(int value)
+        private static Color GetFallbackBackgroundColor(int value)
         {
             switch (value)
             {
-                case 2:
-                    return new Color32(238, 228, 218, 255);
-
-                case 4:
-                    return new Color32(237, 224, 200, 255);
-
-                case 8:
-                    return new Color32(242, 177, 121, 255);
-
-                case 16:
-                    return new Color32(245, 149, 99, 255);
-
-                case 32:
-                    return new Color32(246, 124, 95, 255);
-
-                case 64:
-                    return new Color32(246, 94, 59, 255);
-
-                case 128:
-                    return new Color32(237, 207, 114, 255);
-
-                case 256:
-                    return new Color32(237, 204, 97, 255);
-
-                case 512:
-                    return new Color32(237, 200, 80, 255);
-
-                case 1024:
-                    return new Color32(237, 197, 63, 255);
-
-                case 2048:
-                    return new Color32(237, 194, 46, 255);
-
-                default:
-                    return new Color32(60, 58, 50, 255);
+                case 2: return new Color32(238, 228, 218, 255);
+                case 4: return new Color32(237, 224, 200, 255);
+                case 8: return new Color32(242, 177, 121, 255);
+                case 16: return new Color32(245, 149, 99, 255);
+                case 32: return new Color32(246, 124, 95, 255);
+                case 64: return new Color32(246, 94, 59, 255);
+                case 128: return new Color32(237, 207, 114, 255);
+                case 256: return new Color32(237, 204, 97, 255);
+                case 512: return new Color32(237, 200, 80, 255);
+                case 1024: return new Color32(237, 197, 63, 255);
+                case 2048: return new Color32(237, 194, 46, 255);
+                default: return new Color32(60, 58, 50, 255);
             }
-        }
-
-        private static Color GetTextColor(int value)
-        {
-            if (value <= 4)
-            {
-                return new Color32(119, 110, 101, 255);
-            }
-
-            return Color.white;
         }
     }
 }
