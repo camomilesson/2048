@@ -1,4 +1,5 @@
 using System;
+using System.Collections;
 using TwentyFortyEight.Core;
 using UnityEngine;
 using UnityEngine.UI;
@@ -46,6 +47,7 @@ namespace TwentyFortyEight.UI
         private bool isPointerDown;
         private bool suppressPointerInputUntilRelease;
         private bool isStatsScreenOpen;
+        private bool isAnimating;
 
         private void Awake()
         {
@@ -137,6 +139,12 @@ namespace TwentyFortyEight.UI
                 return;
             }
 
+            if (isAnimating)
+            {
+                ResetPointerState();
+                return;
+            }
+
             if (game.Status != GameStatus.Playing)
             {
                 return;
@@ -192,8 +200,23 @@ namespace TwentyFortyEight.UI
             }
         }
 
+        private void SetAnimationState(bool animating)
+        {
+            isAnimating = animating;
+
+            if (!animating)
+            {
+                RefreshButtons();
+            }
+        }
+
         public void StartNewGame()
         {
+            if (isAnimating)
+            {
+                return;
+            }
+
             selectionMode = SelectionMode.None;
 
             game.StartNewGame();
@@ -207,6 +230,11 @@ namespace TwentyFortyEight.UI
 
         public void UseUndo()
         {
+            if (isAnimating)
+            {
+                return;
+            }
+
             if (selectionMode != SelectionMode.None)
             {
                 Debug.Log("Cannot undo while selecting a tile.");
@@ -234,6 +262,11 @@ namespace TwentyFortyEight.UI
 
         public void UseNuke()
         {
+            if (isAnimating)
+            {
+                return;
+            }
+
             if (selectionMode != SelectionMode.None)
             {
                 Debug.Log("Cannot nuke while selecting a tile.");
@@ -261,6 +294,19 @@ namespace TwentyFortyEight.UI
 
         private void HandleMove(Direction direction)
         {
+            if (isAnimating)
+            {
+                return;
+            }
+
+            StartCoroutine(HandleMoveRoutine(direction));
+        }
+
+        private IEnumerator HandleMoveRoutine(Direction direction)
+        {
+            SetAnimationState(true);
+            ResetPointerState();
+
             GameActionResult result = game.HandleMove(direction);
 
             Debug.Log(result.ToString());
@@ -271,16 +317,37 @@ namespace TwentyFortyEight.UI
                 game.Score
             );
 
-            if (result.Changed)
+            if (!result.Changed)
             {
-                SaveAll();
+                SetAnimationState(false);
+                yield break;
             }
 
-            RefreshAll();
+            UpdateBestScore();
+            SaveAll();
+
+            yield return boardView.AnimateMove(
+                game.Board,
+                result
+            );
+
+            scoreView.SetScores(
+                game.Score,
+                statsManager.Data.BestScore
+            );
+
+            RefreshGameStateOverlay();
+
+            SetAnimationState(false);
         }
 
         private void ToggleKillSelection()
         {
+            if (isAnimating)
+            {
+                return;
+            }
+
             if (selectionMode == SelectionMode.Kill)
             {
                 selectionMode = SelectionMode.None;
@@ -316,6 +383,11 @@ namespace TwentyFortyEight.UI
 
         private void HandleTileClicked(CellPosition position)
         {
+            if (isAnimating)
+            {
+                return;
+            }
+
             suppressPointerInputUntilRelease = true;
             isPointerDown = false;
 
@@ -407,7 +479,8 @@ namespace TwentyFortyEight.UI
 
         private void RefreshButtons()
         {
-            bool isSelecting = selectionMode != SelectionMode.None;
+            bool isSelecting =
+                selectionMode != SelectionMode.None;
 
             bool canUsePowerups =
                 game.Status == GameStatus.Playing ||
@@ -422,7 +495,9 @@ namespace TwentyFortyEight.UI
                 );
 
                 undoButtonView.SetChargeCount(
-                    game.PowerupCharges.GetCharges(PowerupType.Undo)
+                    game.PowerupCharges.GetCharges(
+                        PowerupType.Undo
+                    )
                 );
             }
 
@@ -434,7 +509,9 @@ namespace TwentyFortyEight.UI
                 );
 
                 killButtonView.SetChargeCount(
-                    game.PowerupCharges.GetCharges(PowerupType.Kill)
+                    game.PowerupCharges.GetCharges(
+                        PowerupType.Kill
+                    )
                 );
             }
 
@@ -447,7 +524,9 @@ namespace TwentyFortyEight.UI
                 );
 
                 nukeButtonView.SetChargeCount(
-                    game.PowerupCharges.GetCharges(PowerupType.Nuke)
+                    game.PowerupCharges.GetCharges(
+                        PowerupType.Nuke
+                    )
                 );
             }
         }
@@ -691,6 +770,11 @@ namespace TwentyFortyEight.UI
 
         public void ContinueAfterWin()
         {
+            if (isAnimating)
+            {
+                return;
+            }
+
             GameActionResult result = game.ContinueAfterWin();
 
             Debug.Log(result.ToString());
@@ -705,6 +789,11 @@ namespace TwentyFortyEight.UI
 
         private void ShowStatsScreen()
         {
+            if (isAnimating)
+            {
+                return;
+            }
+
             SaveStats();
 
             isStatsScreenOpen = true;

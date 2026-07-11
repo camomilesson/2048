@@ -15,14 +15,20 @@ namespace TwentyFortyEight.Core
             bool changed = false;
             int totalScoreGained = 0;
             int totalMergeCount = 0;
+
             List<int> createdMergeValues = new List<int>();
+            List<TileMovement> tileMovements = new List<TileMovement>();
+            List<CellPosition> mergePositions = new List<CellPosition>();
 
             for (int lineIndex = 0; lineIndex < board.Size; lineIndex++)
             {
                 List<CellPosition> linePositions =
                     GetLinePositions(board.Size, direction, lineIndex);
 
-                LineResult lineResult = ResolveLine(board, linePositions);
+                LineResult lineResult = ResolveLine(
+                    board,
+                    linePositions
+                );
 
                 if (lineResult.Changed)
                 {
@@ -31,7 +37,18 @@ namespace TwentyFortyEight.Core
 
                 totalScoreGained += lineResult.ScoreGained;
                 totalMergeCount += lineResult.MergeCount;
-                createdMergeValues.AddRange(lineResult.CreatedMergeValues);
+
+                createdMergeValues.AddRange(
+                    lineResult.CreatedMergeValues
+                );
+
+                tileMovements.AddRange(
+                    lineResult.TileMovements
+                );
+
+                mergePositions.AddRange(
+                    lineResult.MergePositions
+                );
             }
 
             return new MoveResult(
@@ -39,7 +56,9 @@ namespace TwentyFortyEight.Core
                 changed,
                 totalScoreGained,
                 totalMergeCount,
-                createdMergeValues
+                createdMergeValues,
+                tileMovements,
+                mergePositions
             );
         }
 
@@ -48,11 +67,24 @@ namespace TwentyFortyEight.Core
             List<CellPosition> positions
         )
         {
-            List<LineEntry> inputEntries = CollectTilesInLine(board, positions);
-            LineMergeResult mergeResult = MergeLine(inputEntries);
+            List<LineEntry> inputEntries =
+                CollectTilesInLine(board, positions);
+
+            LineMergeResult mergeResult =
+                MergeLine(inputEntries);
 
             bool changed = mergeResult.MergeCount > 0;
 
+            List<TileMovement> tileMovements =
+                new List<TileMovement>();
+
+            List<CellPosition> mergePositions =
+                new List<CellPosition>();
+
+            /*
+             * Clear the entire row or column before writing the
+             * resolved tiles back into their destination cells.
+             */
             for (int i = 0; i < positions.Count; i++)
             {
                 board.ClearCell(positions[i]);
@@ -60,14 +92,48 @@ namespace TwentyFortyEight.Core
 
             for (int i = 0; i < mergeResult.OutputSlots.Count; i++)
             {
-                OutputSlot outputSlot = mergeResult.OutputSlots[i];
+                OutputSlot outputSlot =
+                    mergeResult.OutputSlots[i];
+
                 CellPosition targetPosition = positions[i];
 
-                board.SetTile(targetPosition, outputSlot.Tile);
+                board.SetTile(
+                    targetPosition,
+                    outputSlot.Tile
+                );
 
-                if (outputSlot.OriginalPosition != targetPosition)
+                /*
+                 * Every source tile receives a movement record.
+                 *
+                 * For an ordinary move there is one source.
+                 * For a merge there are two sources sharing the
+                 * same target position.
+                 */
+                for (
+                    int sourceIndex = 0;
+                    sourceIndex < outputSlot.SourceEntries.Count;
+                    sourceIndex++
+                )
                 {
-                    changed = true;
+                    LineEntry sourceEntry =
+                        outputSlot.SourceEntries[sourceIndex];
+
+                    tileMovements.Add(
+                        new TileMovement(
+                            sourceEntry.Position,
+                            targetPosition
+                        )
+                    );
+
+                    if (sourceEntry.Position != targetPosition)
+                    {
+                        changed = true;
+                    }
+                }
+
+                if (outputSlot.SourceEntries.Count == 2)
+                {
+                    mergePositions.Add(targetPosition);
                 }
             }
 
@@ -75,7 +141,9 @@ namespace TwentyFortyEight.Core
                 changed,
                 mergeResult.ScoreGained,
                 mergeResult.MergeCount,
-                mergeResult.CreatedMergeValues
+                mergeResult.CreatedMergeValues,
+                tileMovements,
+                mergePositions
             );
         }
 
@@ -84,7 +152,8 @@ namespace TwentyFortyEight.Core
             List<CellPosition> positions
         )
         {
-            List<LineEntry> entries = new List<LineEntry>();
+            List<LineEntry> entries =
+                new List<LineEntry>();
 
             for (int i = 0; i < positions.Count; i++)
             {
@@ -93,17 +162,24 @@ namespace TwentyFortyEight.Core
 
                 if (tile != null)
                 {
-                    entries.Add(new LineEntry(position, tile));
+                    entries.Add(
+                        new LineEntry(position, tile)
+                    );
                 }
             }
 
             return entries;
         }
 
-        private static LineMergeResult MergeLine(List<LineEntry> inputEntries)
+        private static LineMergeResult MergeLine(
+            List<LineEntry> inputEntries
+        )
         {
-            List<OutputSlot> outputSlots = new List<OutputSlot>();
-            List<int> createdMergeValues = new List<int>();
+            List<OutputSlot> outputSlots =
+                new List<OutputSlot>();
+
+            List<int> createdMergeValues =
+                new List<int>();
 
             int scoreGained = 0;
             int mergeCount = 0;
@@ -112,14 +188,29 @@ namespace TwentyFortyEight.Core
             {
                 LineEntry currentEntry = inputEntries[i];
 
-                if (CanMergeWithPreviousOutputSlot(outputSlots, currentEntry.Tile))
+                if (
+                    CanMergeWithPreviousOutputSlot(
+                        outputSlots,
+                        currentEntry.Tile
+                    )
+                )
                 {
-                    OutputSlot previousSlot = outputSlots[outputSlots.Count - 1];
+                    OutputSlot previousSlot =
+                        outputSlots[outputSlots.Count - 1];
+
+                    /*
+                     * Remember that the current tile also travels
+                     * into this output slot.
+                     */
+                    previousSlot.SourceEntries.Add(
+                        currentEntry
+                    );
 
                     previousSlot.Tile.Value *= 2;
                     previousSlot.HasMergedThisMove = true;
 
-                    int createdValue = previousSlot.Tile.Value;
+                    int createdValue =
+                        previousSlot.Tile.Value;
 
                     scoreGained += createdValue;
                     mergeCount++;
@@ -129,7 +220,10 @@ namespace TwentyFortyEight.Core
                 }
 
                 outputSlots.Add(
-                    new OutputSlot(currentEntry.Tile, currentEntry.Position)
+                    new OutputSlot(
+                        currentEntry.Tile,
+                        currentEntry
+                    )
                 );
             }
 
@@ -151,14 +245,16 @@ namespace TwentyFortyEight.Core
                 return false;
             }
 
-            OutputSlot previousSlot = outputSlots[outputSlots.Count - 1];
+            OutputSlot previousSlot =
+                outputSlots[outputSlots.Count - 1];
 
             if (previousSlot.HasMergedThisMove)
             {
                 return false;
             }
 
-            return previousSlot.Tile.Value == currentTile.Value;
+            return previousSlot.Tile.Value ==
+                currentTile.Value;
         }
 
         private static List<CellPosition> GetLinePositions(
@@ -167,22 +263,31 @@ namespace TwentyFortyEight.Core
             int lineIndex
         )
         {
-            List<CellPosition> positions = new List<CellPosition>(boardSize);
+            List<CellPosition> positions =
+                new List<CellPosition>(boardSize);
 
             switch (direction)
             {
                 case Direction.Left:
                     for (int col = 0; col < boardSize; col++)
                     {
-                        positions.Add(new CellPosition(lineIndex, col));
+                        positions.Add(
+                            new CellPosition(lineIndex, col)
+                        );
                     }
 
                     break;
 
                 case Direction.Right:
-                    for (int col = boardSize - 1; col >= 0; col--)
+                    for (
+                        int col = boardSize - 1;
+                        col >= 0;
+                        col--
+                    )
                     {
-                        positions.Add(new CellPosition(lineIndex, col));
+                        positions.Add(
+                            new CellPosition(lineIndex, col)
+                        );
                     }
 
                     break;
@@ -190,15 +295,23 @@ namespace TwentyFortyEight.Core
                 case Direction.Up:
                     for (int row = 0; row < boardSize; row++)
                     {
-                        positions.Add(new CellPosition(row, lineIndex));
+                        positions.Add(
+                            new CellPosition(row, lineIndex)
+                        );
                     }
 
                     break;
 
                 case Direction.Down:
-                    for (int row = boardSize - 1; row >= 0; row--)
+                    for (
+                        int row = boardSize - 1;
+                        row >= 0;
+                        row--
+                    )
                     {
-                        positions.Add(new CellPosition(row, lineIndex));
+                        positions.Add(
+                            new CellPosition(row, lineIndex)
+                        );
                     }
 
                     break;
@@ -219,23 +332,43 @@ namespace TwentyFortyEight.Core
             public CellPosition Position { get; }
             public TileData Tile { get; }
 
-            public LineEntry(CellPosition position, TileData tile)
+            public LineEntry(
+                CellPosition position,
+                TileData tile
+            )
             {
                 Position = position;
-                Tile = tile ?? throw new ArgumentNullException(nameof(tile));
+
+                Tile = tile ??
+                    throw new ArgumentNullException(
+                        nameof(tile)
+                    );
             }
         }
 
         private sealed class OutputSlot
         {
             public TileData Tile { get; }
-            public CellPosition OriginalPosition { get; }
+
+            public List<LineEntry> SourceEntries { get; }
+
             public bool HasMergedThisMove { get; set; }
 
-            public OutputSlot(TileData tile, CellPosition originalPosition)
+            public OutputSlot(
+                TileData tile,
+                LineEntry sourceEntry
+            )
             {
-                Tile = tile ?? throw new ArgumentNullException(nameof(tile));
-                OriginalPosition = originalPosition;
+                Tile = tile ??
+                    throw new ArgumentNullException(
+                        nameof(tile)
+                    );
+
+                SourceEntries = new List<LineEntry>
+                {
+                    sourceEntry
+                };
+
                 HasMergedThisMove = false;
             }
         }
@@ -255,10 +388,14 @@ namespace TwentyFortyEight.Core
             )
             {
                 OutputSlots = outputSlots ??
-                    throw new ArgumentNullException(nameof(outputSlots));
+                    throw new ArgumentNullException(
+                        nameof(outputSlots)
+                    );
 
                 CreatedMergeValues = createdMergeValues ??
-                    throw new ArgumentNullException(nameof(createdMergeValues));
+                    throw new ArgumentNullException(
+                        nameof(createdMergeValues)
+                    );
 
                 ScoreGained = scoreGained;
                 MergeCount = mergeCount;
@@ -270,17 +407,36 @@ namespace TwentyFortyEight.Core
             public bool Changed { get; }
             public int ScoreGained { get; }
             public int MergeCount { get; }
+
             public List<int> CreatedMergeValues { get; }
+
+            public List<TileMovement> TileMovements { get; }
+
+            public List<CellPosition> MergePositions { get; }
 
             public LineResult(
                 bool changed,
                 int scoreGained,
                 int mergeCount,
-                List<int> createdMergeValues
+                List<int> createdMergeValues,
+                List<TileMovement> tileMovements,
+                List<CellPosition> mergePositions
             )
             {
                 CreatedMergeValues = createdMergeValues ??
-                    throw new ArgumentNullException(nameof(createdMergeValues));
+                    throw new ArgumentNullException(
+                        nameof(createdMergeValues)
+                    );
+
+                TileMovements = tileMovements ??
+                    throw new ArgumentNullException(
+                        nameof(tileMovements)
+                    );
+
+                MergePositions = mergePositions ??
+                    throw new ArgumentNullException(
+                        nameof(mergePositions)
+                    );
 
                 Changed = changed;
                 ScoreGained = scoreGained;

@@ -1,4 +1,5 @@
 using System;
+using System.Collections;
 using TMPro;
 using TwentyFortyEight.Core;
 using UnityEngine;
@@ -134,6 +135,83 @@ namespace TwentyFortyEight.UI
                 case 2048: return new Color32(237, 194, 46, 255);
                 default: return new Color32(60, 58, 50, 255);
             }
+        }
+
+        public IEnumerator PlaySpawnAnimation(float duration)
+        {
+            RectTransform rectTransform =
+                GetComponent<RectTransform>();
+
+            rectTransform.localScale = Vector3.zero;
+
+            float elapsed = 0f;
+
+            while (elapsed < duration)
+            {
+                elapsed += Time.unscaledDeltaTime;
+
+                float progress = Mathf.Clamp01(elapsed / duration);
+                float easedProgress = 1f - Mathf.Pow(1f - progress, 3f);
+
+                rectTransform.localScale =
+                    Vector3.LerpUnclamped(
+                        Vector3.zero,
+                        Vector3.one,
+                        easedProgress
+                    );
+
+                yield return null;
+            }
+
+            rectTransform.localScale = Vector3.one;
+        }
+
+        public IEnumerator PlayMergeAnimation(
+            float duration,
+            float peakScale
+        )
+        {
+            RectTransform rectTransform =
+                GetComponent<RectTransform>();
+
+            float halfDuration = duration / 2f;
+            float elapsed = 0f;
+
+            while (elapsed < halfDuration)
+            {
+                elapsed += Time.unscaledDeltaTime;
+
+                float progress =
+                    Mathf.Clamp01(elapsed / halfDuration);
+
+                rectTransform.localScale = Vector3.Lerp(
+                    Vector3.one,
+                    Vector3.one * peakScale,
+                    progress
+                );
+
+                yield return null;
+            }
+
+            elapsed = 0f;
+
+            while (elapsed < halfDuration)
+            {
+                elapsed += Time.unscaledDeltaTime;
+
+                float progress =
+                    Mathf.Clamp01(elapsed / halfDuration);
+
+                rectTransform.localScale = Vector3.Lerp(
+                    Vector3.one * peakScale,
+                    Vector3.one,
+                    progress
+                );
+
+                yield return null;
+            }
+
+            rectTransform.localScale = Vector3.one;
         }
     }
 }

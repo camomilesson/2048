@@ -7,6 +7,8 @@ namespace TwentyFortyEight.Core
     public sealed class GameActionResult
     {
         private readonly List<PowerupType> earnedPowerups;
+        private readonly List<TileMovement> tileMovements;
+        private readonly List<CellPosition> mergePositions;
 
         public bool Changed { get; }
         public int ScoreGained { get; }
@@ -25,6 +27,22 @@ namespace TwentyFortyEight.Core
             }
         }
 
+        public IReadOnlyList<TileMovement> TileMovements
+        {
+            get
+            {
+                return tileMovements;
+            }
+        }
+
+        public IReadOnlyList<CellPosition> MergePositions
+        {
+            get
+            {
+                return mergePositions;
+            }
+        }
+
         public GameActionResult(
             bool changed,
             int scoreGained,
@@ -34,7 +52,9 @@ namespace TwentyFortyEight.Core
             bool gameOverThisAction,
             GameStatus status,
             string message,
-            IReadOnlyList<PowerupType> earnedPowerups = null
+            IReadOnlyList<PowerupType> earnedPowerups = null,
+            IReadOnlyList<TileMovement> tileMovements = null,
+            IReadOnlyList<CellPosition> mergePositions = null
         )
         {
             if (scoreGained < 0)
@@ -65,6 +85,14 @@ namespace TwentyFortyEight.Core
             this.earnedPowerups = earnedPowerups == null
                 ? new List<PowerupType>()
                 : new List<PowerupType>(earnedPowerups);
+
+            this.tileMovements = tileMovements == null
+                ? new List<TileMovement>()
+                : new List<TileMovement>(tileMovements);
+
+            this.mergePositions = mergePositions == null
+                ? new List<CellPosition>()
+                : new List<CellPosition>(mergePositions);
         }
 
         public static GameActionResult NoChange(

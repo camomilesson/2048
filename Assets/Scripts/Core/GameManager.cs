@@ -132,7 +132,9 @@ namespace TwentyFortyEight.Core
                 gameOverThisAction: gameOverThisAction,
                 status: Status,
                 message: "Move handled.",
-                earnedPowerups: earnedPowerups
+                earnedPowerups: earnedPowerups,
+                tileMovements: moveResult.TileMovements,
+                mergePositions: moveResult.MergePositions
             );
         }
 
