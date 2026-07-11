@@ -320,5 +320,193 @@ namespace TwentyFortyEight.UI
             rectTransform.localScale = Vector3.zero;
             canvasGroup.alpha = 0f;
         }
+
+        public IEnumerator PlayNukeOutAnimation(
+            float duration,
+            float peakScale
+        )
+        {
+            RectTransform rectTransform =
+                GetComponent<RectTransform>();
+
+            CanvasGroup canvasGroup =
+                GetComponent<CanvasGroup>();
+
+            if (canvasGroup == null)
+            {
+                canvasGroup =
+                    gameObject.AddComponent<CanvasGroup>();
+            }
+
+            canvasGroup.interactable = false;
+            canvasGroup.blocksRaycasts = false;
+
+            Vector3 startingScale =
+                rectTransform.localScale;
+
+            float startingAlpha =
+                canvasGroup.alpha;
+
+            if (duration <= 0f)
+            {
+                rectTransform.localScale =
+                    Vector3.one * 0.75f;
+
+                canvasGroup.alpha = 0f;
+
+                yield break;
+            }
+
+            float pulseDuration =
+                duration * 0.4f;
+
+            float fadeDuration =
+                duration - pulseDuration;
+
+            float elapsed = 0f;
+
+            while (elapsed < pulseDuration)
+            {
+                elapsed += Time.unscaledDeltaTime;
+
+                float progress =
+                    Mathf.Clamp01(
+                        elapsed / pulseDuration
+                    );
+
+                float easedProgress =
+                    1f - Mathf.Pow(
+                        1f - progress,
+                        3f
+                    );
+
+                rectTransform.localScale =
+                    Vector3.LerpUnclamped(
+                        startingScale,
+                        Vector3.one * peakScale,
+                        easedProgress
+                    );
+
+                yield return null;
+            }
+
+            elapsed = 0f;
+
+            while (elapsed < fadeDuration)
+            {
+                elapsed += Time.unscaledDeltaTime;
+
+                float progress =
+                    Mathf.Clamp01(
+                        elapsed / fadeDuration
+                    );
+
+                float easedProgress =
+                    Mathf.SmoothStep(
+                        0f,
+                        1f,
+                        progress
+                    );
+
+                rectTransform.localScale =
+                    Vector3.LerpUnclamped(
+                        Vector3.one * peakScale,
+                        Vector3.one * 0.75f,
+                        easedProgress
+                    );
+
+                canvasGroup.alpha =
+                    Mathf.Lerp(
+                        startingAlpha,
+                        0f,
+                        easedProgress
+                    );
+
+                yield return null;
+            }
+
+            rectTransform.localScale =
+                Vector3.one * 0.75f;
+
+            canvasGroup.alpha = 0f;
+        }
+
+        public IEnumerator PlayNukeInAnimation(
+            float duration
+        )
+        {
+            RectTransform rectTransform =
+                GetComponent<RectTransform>();
+
+            CanvasGroup canvasGroup =
+                GetComponent<CanvasGroup>();
+
+            if (canvasGroup == null)
+            {
+                canvasGroup =
+                    gameObject.AddComponent<CanvasGroup>();
+            }
+
+            canvasGroup.interactable = false;
+            canvasGroup.blocksRaycasts = false;
+
+            rectTransform.localScale =
+                Vector3.one * 0.75f;
+
+            canvasGroup.alpha = 0f;
+
+            if (duration <= 0f)
+            {
+                rectTransform.localScale =
+                    Vector3.one;
+
+                canvasGroup.alpha = 1f;
+                canvasGroup.interactable = true;
+                canvasGroup.blocksRaycasts = true;
+
+                yield break;
+            }
+
+            float elapsed = 0f;
+
+            while (elapsed < duration)
+            {
+                elapsed += Time.unscaledDeltaTime;
+
+                float progress =
+                    Mathf.Clamp01(
+                        elapsed / duration
+                    );
+
+                float easedProgress =
+                    1f - Mathf.Pow(
+                        1f - progress,
+                        3f
+                    );
+
+                rectTransform.localScale =
+                    Vector3.LerpUnclamped(
+                        Vector3.one * 0.75f,
+                        Vector3.one,
+                        easedProgress
+                    );
+
+                canvasGroup.alpha =
+                    Mathf.Lerp(
+                        0f,
+                        1f,
+                        easedProgress
+                    );
+
+                yield return null;
+            }
+
+            rectTransform.localScale =
+                Vector3.one;
+
+            canvasGroup.alpha = 1f;
+            canvasGroup.interactable = true;
+            canvasGroup.blocksRaycasts = true;
+        }
     }
 }

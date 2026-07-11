@@ -288,11 +288,25 @@ namespace TwentyFortyEight.UI
 
             if (selectionMode != SelectionMode.None)
             {
-                Debug.Log("Cannot nuke while selecting a tile.");
+                Debug.Log(
+                    "Cannot nuke while selecting a tile."
+                );
+
                 return;
             }
 
-            GameActionResult result = game.UseNukePowerup();
+            StartCoroutine(
+                HandleNukeRoutine()
+            );
+        }
+
+        private IEnumerator HandleNukeRoutine()
+        {
+            SetAnimationState(true);
+            SuppressPointerInputUntilReleased();
+
+            GameActionResult result =
+                game.UseNukePowerup();
 
             Debug.Log(result.ToString());
 
@@ -303,12 +317,23 @@ namespace TwentyFortyEight.UI
                 game.Score
             );
 
-            if (result.Changed)
+            if (!result.Changed)
             {
-                SaveAll();
+                SetAnimationState(false);
+                RefreshAll();
+
+                yield break;
             }
 
-            RefreshAll();
+            SaveAll();
+
+            yield return boardView.AnimateNuke(
+                game.Board
+            );
+
+            RefreshGameStateOverlay();
+
+            SetAnimationState(false);
         }
 
         private void HandleMove(Direction direction)

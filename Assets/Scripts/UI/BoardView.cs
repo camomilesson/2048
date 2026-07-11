@@ -16,11 +16,14 @@ namespace TwentyFortyEight.UI
         [SerializeField] private TileView tilePrefab;
 
         [Header("Animation")]
-        [SerializeField] private float moveDuration = 0.14f;
-        [SerializeField] private float mergeDuration = 0.12f;
-        [SerializeField] private float spawnDuration = 0.1f;
-        [SerializeField] private float killDuration = 0.16f;
+        [SerializeField] private float moveDuration = 0.07f;
+        [SerializeField] private float mergeDuration = 0.07f;
+        [SerializeField] private float spawnDuration = 0.07f;
+        [SerializeField] private float killDuration = 0.14f;
+        [SerializeField] private float nukeOutDuration = 0.18f;
+        [SerializeField] private float nukeInDuration = 0.07f;
         [SerializeField] private float mergeScale = 1.15f;
+        [SerializeField] private float nukePeakScale = 1.12f;
 
         private readonly Dictionary<CellPosition, TileView> tileViews =
             new Dictionary<CellPosition, TileView>();
@@ -226,6 +229,87 @@ namespace TwentyFortyEight.UI
             {
                 entry.Key.anchoredPosition =
                     entry.Value;
+            }
+        }
+
+        public IEnumerator AnimateNuke(
+            BoardModel finalBoard
+        )
+        {
+            if (finalBoard == null)
+            {
+                throw new ArgumentNullException(
+                    nameof(finalBoard)
+                );
+            }
+
+            ValidateReferences();
+
+            List<TileView> currentTiles =
+                new List<TileView>(
+                    tileViews.Values
+                );
+
+            for (int i = 0; i < currentTiles.Count; i++)
+            {
+                TileView tileView =
+                    currentTiles[i];
+
+                if (tileView == null)
+                {
+                    continue;
+                }
+
+                StartCoroutine(
+                    tileView.PlayNukeOutAnimation(
+                        nukeOutDuration,
+                        nukePeakScale
+                    )
+                );
+            }
+
+            if (
+                currentTiles.Count > 0 &&
+                nukeOutDuration > 0f
+            )
+            {
+                yield return new WaitForSecondsRealtime(
+                    nukeOutDuration
+                );
+            }
+
+            Refresh(finalBoard);
+
+            List<TileView> resultTiles =
+                new List<TileView>(
+                    tileViews.Values
+                );
+
+            for (int i = 0; i < resultTiles.Count; i++)
+            {
+                TileView tileView =
+                    resultTiles[i];
+
+                if (tileView == null)
+                {
+                    continue;
+                }
+
+                StartCoroutine(
+                    tileView.PlayNukeInAnimation(
+                        nukeInDuration
+                    )
+                );
+            }
+
+            if (
+                resultTiles.Count > 0 &&
+                nukeInDuration > 0f
+            )
+            {
+                yield return new WaitForSecondsRealtime(
+                    nukeInDuration
+                );
             }
         }
 
@@ -552,8 +636,17 @@ namespace TwentyFortyEight.UI
             killDuration =
                 Mathf.Max(0f, killDuration);
 
+            nukeOutDuration =
+                Mathf.Max(0f, nukeOutDuration);
+
+            nukeInDuration =
+                Mathf.Max(0f, nukeInDuration);
+
             mergeScale =
                 Mathf.Max(1f, mergeScale);
+
+            nukePeakScale =
+                Mathf.Max(1f, nukePeakScale);
         }
     }
 }
