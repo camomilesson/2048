@@ -53,6 +53,9 @@ namespace TwentyFortyEight.UI
         [SerializeField, Range(0, 4)]
         private int maxBufferedMoves = 2;
 
+        [Header("VFX")]
+        [SerializeField] private UiVfxController uiVfx;
+
         private GameManager game;
         private StatsStore statsStore;
         private StatsManager statsManager;
@@ -379,6 +382,8 @@ namespace TwentyFortyEight.UI
             }
 
             SaveAll();
+
+            uiVfx.PlayNukeVfx();
 
             yield return boardView.AnimateNuke(
                 game.Board
