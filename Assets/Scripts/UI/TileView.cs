@@ -270,9 +270,6 @@ namespace TwentyFortyEight.UI
                     gameObject.AddComponent<CanvasGroup>();
             }
 
-            // Stop this tile from receiving further clicks without
-            // changing the Button's visual interactable state.
-            canvasGroup.interactable = false;
             canvasGroup.blocksRaycasts = false;
 
             Vector3 startingScale =
@@ -338,7 +335,6 @@ namespace TwentyFortyEight.UI
                     gameObject.AddComponent<CanvasGroup>();
             }
 
-            canvasGroup.interactable = false;
             canvasGroup.blocksRaycasts = false;
 
             Vector3 startingScale =
@@ -447,7 +443,6 @@ namespace TwentyFortyEight.UI
                     gameObject.AddComponent<CanvasGroup>();
             }
 
-            canvasGroup.interactable = false;
             canvasGroup.blocksRaycasts = false;
 
             rectTransform.localScale =
@@ -461,7 +456,6 @@ namespace TwentyFortyEight.UI
                     Vector3.one;
 
                 canvasGroup.alpha = 1f;
-                canvasGroup.interactable = true;
                 canvasGroup.blocksRaycasts = true;
 
                 yield break;
@@ -505,7 +499,197 @@ namespace TwentyFortyEight.UI
                 Vector3.one;
 
             canvasGroup.alpha = 1f;
-            canvasGroup.interactable = true;
+            canvasGroup.blocksRaycasts = true;
+        }
+
+        public IEnumerator PlayUndoOutAnimation(
+            float duration,
+            float slideDistance
+        )
+        {
+            RectTransform rectTransform =
+                GetComponent<RectTransform>();
+
+            CanvasGroup canvasGroup =
+                GetComponent<CanvasGroup>();
+
+            if (canvasGroup == null)
+            {
+                canvasGroup =
+                    gameObject.AddComponent<CanvasGroup>();
+            }
+
+            canvasGroup.blocksRaycasts = false;
+
+            Vector2 startingPosition =
+                rectTransform.anchoredPosition;
+
+            Vector2 targetPosition =
+                startingPosition +
+                new Vector2(slideDistance, 0f);
+
+            Vector3 startingScale =
+                rectTransform.localScale;
+
+            float startingAlpha =
+                canvasGroup.alpha;
+
+            if (duration <= 0f)
+            {
+                rectTransform.anchoredPosition =
+                    targetPosition;
+
+                rectTransform.localScale =
+                    Vector3.one * 0.9f;
+
+                canvasGroup.alpha = 0f;
+
+                yield break;
+            }
+
+            float elapsed = 0f;
+
+            while (elapsed < duration)
+            {
+                elapsed += Time.unscaledDeltaTime;
+
+                float progress =
+                    Mathf.Clamp01(elapsed / duration);
+
+                float easedProgress =
+                    Mathf.SmoothStep(
+                        0f,
+                        1f,
+                        progress
+                    );
+
+                rectTransform.anchoredPosition =
+                    Vector2.LerpUnclamped(
+                        startingPosition,
+                        targetPosition,
+                        easedProgress
+                    );
+
+                rectTransform.localScale =
+                    Vector3.LerpUnclamped(
+                        startingScale,
+                        Vector3.one * 0.9f,
+                        easedProgress
+                    );
+
+                canvasGroup.alpha =
+                    Mathf.Lerp(
+                        startingAlpha,
+                        0f,
+                        easedProgress
+                    );
+
+                yield return null;
+            }
+
+            rectTransform.anchoredPosition =
+                targetPosition;
+
+            rectTransform.localScale =
+                Vector3.one * 0.9f;
+
+            canvasGroup.alpha = 0f;
+        }
+
+        public IEnumerator PlayUndoInAnimation(
+            float duration,
+            float slideDistance
+        )
+        {
+            RectTransform rectTransform =
+                GetComponent<RectTransform>();
+
+            CanvasGroup canvasGroup =
+                GetComponent<CanvasGroup>();
+
+            if (canvasGroup == null)
+            {
+                canvasGroup =
+                    gameObject.AddComponent<CanvasGroup>();
+            }
+
+            canvasGroup.blocksRaycasts = false;
+
+            Vector2 targetPosition =
+                rectTransform.anchoredPosition;
+
+            Vector2 startingPosition =
+                targetPosition -
+                new Vector2(slideDistance, 0f);
+
+            rectTransform.anchoredPosition =
+                startingPosition;
+
+            rectTransform.localScale =
+                Vector3.one * 0.9f;
+
+            canvasGroup.alpha = 0f;
+
+            if (duration <= 0f)
+            {
+                rectTransform.anchoredPosition =
+                    targetPosition;
+
+                rectTransform.localScale =
+                    Vector3.one;
+
+                canvasGroup.alpha = 1f;
+                canvasGroup.blocksRaycasts = true;
+
+                yield break;
+            }
+
+            float elapsed = 0f;
+
+            while (elapsed < duration)
+            {
+                elapsed += Time.unscaledDeltaTime;
+
+                float progress =
+                    Mathf.Clamp01(elapsed / duration);
+
+                float easedProgress =
+                    1f - Mathf.Pow(
+                        1f - progress,
+                        3f
+                    );
+
+                rectTransform.anchoredPosition =
+                    Vector2.LerpUnclamped(
+                        startingPosition,
+                        targetPosition,
+                        easedProgress
+                    );
+
+                rectTransform.localScale =
+                    Vector3.LerpUnclamped(
+                        Vector3.one * 0.9f,
+                        Vector3.one,
+                        easedProgress
+                    );
+
+                canvasGroup.alpha =
+                    Mathf.Lerp(
+                        0f,
+                        1f,
+                        easedProgress
+                    );
+
+                yield return null;
+            }
+
+            rectTransform.anchoredPosition =
+                targetPosition;
+
+            rectTransform.localScale =
+                Vector3.one;
+
+            canvasGroup.alpha = 1f;
             canvasGroup.blocksRaycasts = true;
         }
     }

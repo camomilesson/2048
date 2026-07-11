@@ -1,5 +1,6 @@
 using System;
 using System.Collections;
+using System.Collections.Generic;
 using TwentyFortyEight.Core;
 using UnityEngine;
 using UnityEngine.UI;
@@ -48,6 +49,10 @@ namespace TwentyFortyEight.UI
         [SerializeField] private float minimumSwipeDistance = 80f;
         [SerializeField] private float swipeDirectionThreshold = 0.5f;
 
+        [Header("Move Buffer")]
+        [SerializeField, Range(0, 4)]
+        private int maxBufferedMoves = 2;
+
         private GameManager game;
         private StatsStore statsStore;
         private StatsManager statsManager;
@@ -58,6 +63,11 @@ namespace TwentyFortyEight.UI
         private bool suppressPointerInputUntilRelease;
         private bool isStatsScreenOpen;
         private bool isAnimating;
+
+        private readonly Queue<Direction> moveQueue =
+            new Queue<Direction>();
+
+        private bool isProcessingMoveQueue;
 
         private void Awake()
         {
@@ -158,7 +168,13 @@ namespace TwentyFortyEight.UI
                 return;
             }
 
-            if (isAnimating)
+            if (selectionMode != SelectionMode.None)
+            {
+                ResetPointerState();
+                return;
+            }
+
+            if (isAnimating && !isProcessingMoveQueue)
             {
                 ResetPointerState();
                 return;
@@ -166,11 +182,7 @@ namespace TwentyFortyEight.UI
 
             if (game.Status != GameStatus.Playing)
             {
-                return;
-            }
-
-            if (selectionMode != SelectionMode.None)
-            {
+                ResetPointerState();
                 return;
             }
 
@@ -217,6 +229,11 @@ namespace TwentyFortyEight.UI
             {
                 statsScreenView.BackClicked -= HideStatsScreen;
             }
+            
+            moveQueue.Clear();
+            isProcessingMoveQueue = false;
+            isAnimating = false;
+            ResetPointerState();
         }
 
         private void SetAnimationState(bool animating)
@@ -235,6 +252,8 @@ namespace TwentyFortyEight.UI
             {
                 return;
             }
+
+            ClearMoveQueue();
 
             selectionMode = SelectionMode.None;
 
@@ -256,11 +275,27 @@ namespace TwentyFortyEight.UI
 
             if (selectionMode != SelectionMode.None)
             {
-                Debug.Log("Cannot undo while selecting a tile.");
+                Debug.Log(
+                    "Cannot undo while selecting a tile."
+                );
+
                 return;
             }
 
-            GameActionResult result = game.UseUndoPowerup();
+            ClearMoveQueue();
+
+            StartCoroutine(
+                HandleUndoRoutine()
+            );
+        }
+
+        private IEnumerator HandleUndoRoutine()
+        {
+            SetAnimationState(true);
+            SuppressPointerInputUntilReleased();
+
+            GameActionResult result =
+                game.UseUndoPowerup();
 
             Debug.Log(result.ToString());
 
@@ -271,12 +306,28 @@ namespace TwentyFortyEight.UI
                 game.Score
             );
 
-            if (result.Changed)
+            if (!result.Changed)
             {
-                SaveAll();
+                SetAnimationState(false);
+                RefreshAll();
+
+                yield break;
             }
 
-            RefreshAll();
+            SaveAll();
+
+            yield return boardView.AnimateUndo(
+                game.Board
+            );
+
+            scoreView.SetScores(
+                game.Score,
+                statsManager.Data.BestScore
+            );
+
+            RefreshGameStateOverlay();
+
+            SetAnimationState(false);
         }
 
         public void UseNuke()
@@ -294,6 +345,8 @@ namespace TwentyFortyEight.UI
 
                 return;
             }
+
+            ClearMoveQueue();
 
             StartCoroutine(
                 HandleNukeRoutine()
@@ -338,20 +391,93 @@ namespace TwentyFortyEight.UI
 
         private void HandleMove(Direction direction)
         {
-            if (isAnimating)
+            RequestMove(direction);
+        }
+
+        private void RequestMove(Direction direction)
+        {
+            if (isStatsScreenOpen)
             {
                 return;
             }
 
-            StartCoroutine(HandleMoveRoutine(direction));
+            if (selectionMode != SelectionMode.None)
+            {
+                return;
+            }
+
+            if (game.Status != GameStatus.Playing)
+            {
+                return;
+            }
+
+            /*
+            * isAnimating can also mean a power-up animation.
+            * Only regular move animations accept buffered moves.
+            */
+            if (isAnimating && !isProcessingMoveQueue)
+            {
+                return;
+            }
+
+            if (!isProcessingMoveQueue)
+            {
+                moveQueue.Enqueue(direction);
+                isProcessingMoveQueue = true;
+
+                StartCoroutine(ProcessMoveQueue());
+                return;
+            }
+
+            /*
+            * maxBufferedMoves counts pending moves only.
+            * The currently animating move is not in the queue.
+            */
+            if (moveQueue.Count >= maxBufferedMoves)
+            {
+                return;
+            }
+
+            moveQueue.Enqueue(direction);
         }
 
-        private IEnumerator HandleMoveRoutine(Direction direction)
+        private IEnumerator ProcessMoveQueue()
         {
             SetAnimationState(true);
             ResetPointerState();
 
-            GameActionResult result = game.HandleMove(direction);
+            while (moveQueue.Count > 0)
+            {
+                if (
+                    game.Status != GameStatus.Playing ||
+                    isStatsScreenOpen ||
+                    selectionMode != SelectionMode.None
+                )
+                {
+                    moveQueue.Clear();
+                    break;
+                }
+
+                Direction direction =
+                    moveQueue.Dequeue();
+
+                yield return HandleSingleMoveRoutine(
+                    direction
+                );
+            }
+
+            moveQueue.Clear();
+            isProcessingMoveQueue = false;
+
+            SetAnimationState(false);
+        }
+
+        private IEnumerator HandleSingleMoveRoutine(
+            Direction direction
+        )
+        {
+            GameActionResult result =
+                game.HandleMove(direction);
 
             Debug.Log(result.ToString());
 
@@ -361,9 +487,12 @@ namespace TwentyFortyEight.UI
                 game.Score
             );
 
+            /*
+            * An ineffective buffered direction is simply discarded.
+            * The queue immediately advances to the next direction.
+            */
             if (!result.Changed)
             {
-                SetAnimationState(false);
                 yield break;
             }
 
@@ -381,8 +510,6 @@ namespace TwentyFortyEight.UI
             );
 
             RefreshGameStateOverlay();
-
-            SetAnimationState(false);
         }
 
         private void ToggleKillSelection()
@@ -391,6 +518,8 @@ namespace TwentyFortyEight.UI
             {
                 return;
             }
+
+            ClearMoveQueue();
 
             if (selectionMode == SelectionMode.Kill)
             {
@@ -837,12 +966,19 @@ namespace TwentyFortyEight.UI
             suppressPointerInputUntilRelease = true;
         }
 
+        private void ClearMoveQueue()
+        {
+            moveQueue.Clear();
+        }
+
         public void ContinueAfterWin()
         {
             if (isAnimating)
             {
                 return;
             }
+
+            ClearMoveQueue();
 
             GameActionResult result = game.ContinueAfterWin();
 
@@ -862,6 +998,8 @@ namespace TwentyFortyEight.UI
             {
                 return;
             }
+
+            ClearMoveQueue();
 
             SaveStats();
 
