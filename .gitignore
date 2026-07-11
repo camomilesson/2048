@@ -28,3 +28,10 @@ Recordings/
 
 # Crash reports
 sysinfo.txt
+
+# Unity Android build intermediates
+.utmp/
+.gradle/
+
+# Other generated Unity output
+ExportedObj/

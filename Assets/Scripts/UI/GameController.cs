@@ -32,6 +32,8 @@ namespace TwentyFortyEight.UI
         [SerializeField] private Button statsButton;
 
         [Header("Swipe Input")]
+        [SerializeField] private RectTransform swipeArea;
+        [SerializeField] private float swipeAreaPadding = 20f;
         [SerializeField] private float minimumSwipeDistance = 80f;
         [SerializeField] private float swipeDirectionThreshold = 0.5f;
 
@@ -472,6 +474,13 @@ namespace TwentyFortyEight.UI
                     "GameController is missing a New Game button reference."
                 );
             }
+
+            if (swipeArea == null)
+            {
+                throw new InvalidOperationException(
+                    "GameController is missing a Swipe Area reference."
+                );
+            }
         }
 
         private void HandleKeyboardInput()
@@ -532,12 +541,13 @@ namespace TwentyFortyEight.UI
                 {
                     BeginPointer(touch.position);
                 }
-                else if (
-                    touch.phase == TouchPhase.Ended ||
-                    touch.phase == TouchPhase.Canceled
-                )
+                else if (touch.phase == TouchPhase.Ended)
                 {
                     EndPointer(touch.position);
+                }
+                else if (touch.phase == TouchPhase.Canceled)
+                {
+                    ResetPointerState();
                 }
 
                 return;
@@ -564,8 +574,55 @@ namespace TwentyFortyEight.UI
             }
         }
 
+        private bool IsInsideSwipeArea(Vector2 screenPosition)
+        {
+            if (swipeArea == null)
+            {
+                return false;
+            }
+
+            Canvas canvas = swipeArea.GetComponentInParent<Canvas>();
+
+            Camera uiCamera = null;
+
+            if (
+                canvas != null &&
+                canvas.renderMode != RenderMode.ScreenSpaceOverlay
+            )
+            {
+                uiCamera = canvas.worldCamera;
+            }
+
+            bool converted = RectTransformUtility.ScreenPointToLocalPointInRectangle(
+                swipeArea,
+                screenPosition,
+                uiCamera,
+                out Vector2 localPosition
+            );
+
+            if (!converted)
+            {
+                return false;
+            }
+
+            Rect allowedRect = swipeArea.rect;
+
+            allowedRect.xMin -= swipeAreaPadding;
+            allowedRect.xMax += swipeAreaPadding;
+            allowedRect.yMin -= swipeAreaPadding;
+            allowedRect.yMax += swipeAreaPadding;
+
+            return allowedRect.Contains(localPosition);
+        }
+
         private void BeginPointer(Vector2 screenPosition)
         {
+            if (!IsInsideSwipeArea(screenPosition))
+            {
+                ResetPointerState();
+                return;
+            }
+
             pointerDownPosition = screenPosition;
             isPointerDown = true;
         }

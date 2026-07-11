@@ -12,5 +12,33 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 7856d15192bb347b3bd6dd8bb7c75c55, type: 3}
   m_Name: TileVisualLibrary
   m_EditorClassIdentifier: Assembly-CSharp::TwentyFortyEight.UI.TileVisualLibrary
-  fallbackSprite: {fileID: 0}
-  spriteMappings: []
+  fallbackSprite: {fileID: 21300000, guid: 99271a07258aa4c4086a7c763cf510af, type: 3}
+  spriteMappings:
+  - value: 2
+    sprite: {fileID: 21300000, guid: fe6e0f6e8ef2e42b1bb79fdc66648def, type: 3}
+  - value: 4
+    sprite: {fileID: 21300000, guid: 4af2093cc78ad4d4da41ffa7d75f47f1, type: 3}
+  - value: 8
+    sprite: {fileID: 21300000, guid: 966975cf4a402422ca71f9c4b7d52e1e, type: 3}
+  - value: 16
+    sprite: {fileID: 21300000, guid: ffaa902a2c49e4dbc9dbadb10f53225e, type: 3}
+  - value: 32
+    sprite: {fileID: 21300000, guid: f59044d68570747ee8e0a884118d4bc8, type: 3}
+  - value: 64
+    sprite: {fileID: 21300000, guid: 3c2e158bcd8884f1daf186e9c8e6fb9f, type: 3}
+  - value: 128
+    sprite: {fileID: 21300000, guid: 241e5b68a9023416697b0a41794c4e8b, type: 3}
+  - value: 256
+    sprite: {fileID: 21300000, guid: f15c86af472454a20b668c74b8635657, type: 3}
+  - value: 512
+    sprite: {fileID: 21300000, guid: c2d07c50400564bd981fd2ea6000fa1d, type: 3}
+  - value: 1024
+    sprite: {fileID: 21300000, guid: 8738ef39ba36f4c688c928115cd50530, type: 3}
+  - value: 2048
+    sprite: {fileID: 21300000, guid: be28a6be3d1544c1d952fbb1ffd0d335, type: 3}
+  - value: 4096
+    sprite: {fileID: 21300000, guid: cc53d04582fb24346807e2e411171642, type: 3}
+  - value: 8192
+    sprite: {fileID: 21300000, guid: 0d03e830ac1104011a3b6179c8709a15, type: 3}
+  - value: 16384
+    sprite: {fileID: 21300000, guid: c6ad427e4cb5f48819e2d407d69f49c5, type: 3}
