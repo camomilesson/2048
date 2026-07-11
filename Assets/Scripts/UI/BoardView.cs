@@ -9,7 +9,6 @@ namespace TwentyFortyEight.UI
 {
     public sealed class BoardView : MonoBehaviour
     {
-
         [Header("Board")]
         [SerializeField] private int boardSize = 5;
         [SerializeField] private RectTransform cellGrid;
@@ -20,6 +19,7 @@ namespace TwentyFortyEight.UI
         [SerializeField] private float moveDuration = 0.14f;
         [SerializeField] private float mergeDuration = 0.12f;
         [SerializeField] private float spawnDuration = 0.1f;
+        [SerializeField] private float killDuration = 0.16f;
         [SerializeField] private float mergeScale = 1.15f;
 
         private readonly Dictionary<CellPosition, TileView> tileViews =
@@ -34,29 +34,65 @@ namespace TwentyFortyEight.UI
         {
             ValidateReferences();
 
-            yield return AnimateTileMovements(result.TileMovements);
+            yield return AnimateTileMovements(
+                result.TileMovements
+            );
 
             Refresh(finalBoard);
 
             yield return AnimateResultTiles(result);
         }
 
-        private IEnumerator AnimateResultTiles(GameActionResult result)
+        public IEnumerator AnimateKill(
+            CellPosition position,
+            BoardModel finalBoard
+        )
         {
-            List<Coroutine> runningAnimations = new List<Coroutine>();
+            if (finalBoard == null)
+            {
+                throw new ArgumentNullException(
+                    nameof(finalBoard)
+                );
+            }
 
+            ValidateReferences();
+
+            if (
+                tileViews.TryGetValue(
+                    position,
+                    out TileView tileView
+                ) &&
+                tileView != null
+            )
+            {
+                yield return tileView.PlayKillAnimation(
+                    killDuration
+                );
+            }
+
+            Refresh(finalBoard);
+        }
+
+        private IEnumerator AnimateResultTiles(
+            GameActionResult result
+        )
+        {
             for (int i = 0; i < result.MergePositions.Count; i++)
             {
-                CellPosition position = result.MergePositions[i];
+                CellPosition position =
+                    result.MergePositions[i];
 
-                if (tileViews.TryGetValue(position, out TileView tileView))
+                if (
+                    tileViews.TryGetValue(
+                        position,
+                        out TileView tileView
+                    )
+                )
                 {
-                    runningAnimations.Add(
-                        StartCoroutine(
-                            tileView.PlayMergeAnimation(
-                                mergeDuration,
-                                mergeScale
-                            )
+                    StartCoroutine(
+                        tileView.PlayMergeAnimation(
+                            mergeDuration,
+                            mergeScale
                         )
                     );
                 }
@@ -71,21 +107,27 @@ namespace TwentyFortyEight.UI
                 )
             )
             {
-                runningAnimations.Add(
-                    StartCoroutine(
-                        spawnedTile.PlaySpawnAnimation(spawnDuration)
+                StartCoroutine(
+                    spawnedTile.PlaySpawnAnimation(
+                        spawnDuration
                     )
                 );
             }
 
             float waitDuration = Mathf.Max(
-                result.MergePositions.Count > 0 ? mergeDuration : 0f,
-                result.SpawnResult.Spawned ? spawnDuration : 0f
+                result.MergePositions.Count > 0
+                    ? mergeDuration
+                    : 0f,
+                result.SpawnResult.Spawned
+                    ? spawnDuration
+                    : 0f
             );
 
             if (waitDuration > 0f)
             {
-                yield return new WaitForSecondsRealtime(waitDuration);
+                yield return new WaitForSecondsRealtime(
+                    waitDuration
+                );
             }
         }
 
@@ -93,17 +135,24 @@ namespace TwentyFortyEight.UI
             IReadOnlyList<TileMovement> movements
         )
         {
-            Dictionary<RectTransform, Vector2> startingPositions =
-                new Dictionary<RectTransform, Vector2>();
+            Dictionary<RectTransform, Vector2>
+                startingPositions =
+                    new Dictionary<RectTransform, Vector2>();
 
-            Dictionary<RectTransform, Vector2> targetPositions =
-                new Dictionary<RectTransform, Vector2>();
+            Dictionary<RectTransform, Vector2>
+                targetPositions =
+                    new Dictionary<RectTransform, Vector2>();
 
             for (int i = 0; i < movements.Count; i++)
             {
                 TileMovement movement = movements[i];
 
-                if (!tileViews.TryGetValue(movement.From, out TileView tileView))
+                if (
+                    !tileViews.TryGetValue(
+                        movement.From,
+                        out TileView tileView
+                    )
+                )
                 {
                     continue;
                 }
@@ -111,9 +160,27 @@ namespace TwentyFortyEight.UI
                 RectTransform tileRect =
                     tileView.GetComponent<RectTransform>();
 
-                startingPositions[tileRect] = tileRect.anchoredPosition;
+                startingPositions[tileRect] =
+                    tileRect.anchoredPosition;
+
                 targetPositions[tileRect] =
-                    GetCellAnchoredPosition(movement.To);
+                    GetCellAnchoredPosition(
+                        movement.To
+                    );
+            }
+
+            if (moveDuration <= 0f)
+            {
+                foreach (
+                    KeyValuePair<RectTransform, Vector2> entry
+                    in targetPositions
+                )
+                {
+                    entry.Key.anchoredPosition =
+                        entry.Value;
+                }
+
+                yield break;
             }
 
             float elapsed = 0f;
@@ -122,21 +189,31 @@ namespace TwentyFortyEight.UI
             {
                 elapsed += Time.unscaledDeltaTime;
 
-                float progress = Mathf.Clamp01(elapsed / moveDuration);
-                float easedProgress = 1f - Mathf.Pow(1f - progress, 3f);
+                float progress =
+                    Mathf.Clamp01(
+                        elapsed / moveDuration
+                    );
+
+                float easedProgress =
+                    1f - Mathf.Pow(
+                        1f - progress,
+                        3f
+                    );
 
                 foreach (
                     KeyValuePair<RectTransform, Vector2> entry
                     in targetPositions
                 )
                 {
-                    RectTransform tileRect = entry.Key;
+                    RectTransform tileRect =
+                        entry.Key;
 
-                    tileRect.anchoredPosition = Vector2.LerpUnclamped(
-                        startingPositions[tileRect],
-                        entry.Value,
-                        easedProgress
-                    );
+                    tileRect.anchoredPosition =
+                        Vector2.LerpUnclamped(
+                            startingPositions[tileRect],
+                            entry.Value,
+                            easedProgress
+                        );
                 }
 
                 yield return null;
@@ -147,26 +224,42 @@ namespace TwentyFortyEight.UI
                 in targetPositions
             )
             {
-                entry.Key.anchoredPosition = entry.Value;
+                entry.Key.anchoredPosition =
+                    entry.Value;
             }
         }
 
-        private Vector2 GetCellAnchoredPosition(CellPosition position)
+        private Vector2 GetCellAnchoredPosition(
+            CellPosition position
+        )
         {
-            RectTransform cellRect = GetCellRect(position);
+            RectTransform cellRect =
+                GetCellRect(position);
 
-            Vector3[] worldCorners = new Vector3[4];
+            Vector3[] worldCorners =
+                new Vector3[4];
+
             cellRect.GetWorldCorners(worldCorners);
 
             Vector3 bottomLeftLocal =
-                tileLayer.InverseTransformPoint(worldCorners[0]);
+                tileLayer.InverseTransformPoint(
+                    worldCorners[0]
+                );
 
             Vector3 topRightLocal =
-                tileLayer.InverseTransformPoint(worldCorners[2]);
+                tileLayer.InverseTransformPoint(
+                    worldCorners[2]
+                );
 
             return new Vector2(
-                (bottomLeftLocal.x + topRightLocal.x) / 2f,
-                (bottomLeftLocal.y + topRightLocal.y) / 2f
+                (
+                    bottomLeftLocal.x +
+                    topRightLocal.x
+                ) / 2f,
+                (
+                    bottomLeftLocal.y +
+                    topRightLocal.y
+                ) / 2f
             );
         }
 
@@ -174,13 +267,16 @@ namespace TwentyFortyEight.UI
         {
             if (board == null)
             {
-                throw new ArgumentNullException(nameof(board));
+                throw new ArgumentNullException(
+                    nameof(board)
+                );
             }
 
             if (board.Size != boardSize)
             {
                 throw new ArgumentException(
-                    $"Board size {board.Size} does not match BoardView size {boardSize}.",
+                    $"Board size {board.Size} does not match " +
+                    $"BoardView size {boardSize}.",
                     nameof(board)
                 );
             }
@@ -191,7 +287,9 @@ namespace TwentyFortyEight.UI
             // before we copy cell positions.
             Canvas.ForceUpdateCanvases();
 
-            LayoutRebuilder.ForceRebuildLayoutImmediate(cellGrid);
+            LayoutRebuilder.ForceRebuildLayoutImmediate(
+                cellGrid
+            );
 
             ClearTiles();
 
@@ -199,14 +297,16 @@ namespace TwentyFortyEight.UI
             {
                 for (int col = 0; col < board.Size; col++)
                 {
-                    TileData tile = board.GetTile(row, col);
+                    TileData tile =
+                        board.GetTile(row, col);
 
                     if (tile == null)
                     {
                         continue;
                     }
 
-                    CellPosition position = new CellPosition(row, col);
+                    CellPosition position =
+                        new CellPosition(row, col);
 
                     CreateTileView(position, tile);
                 }
@@ -219,9 +319,14 @@ namespace TwentyFortyEight.UI
 
             tileViews.Clear();
 
-            for (int i = tileLayer.childCount - 1; i >= 0; i--)
+            for (
+                int i = tileLayer.childCount - 1;
+                i >= 0;
+                i--
+            )
             {
-                Transform child = tileLayer.GetChild(i);
+                Transform child =
+                    tileLayer.GetChild(i);
 
                 if (Application.isPlaying)
                 {
@@ -229,7 +334,9 @@ namespace TwentyFortyEight.UI
                 }
                 else
                 {
-                    DestroyImmediate(child.gameObject);
+                    DestroyImmediate(
+                        child.gameObject
+                    );
                 }
             }
         }
@@ -239,7 +346,8 @@ namespace TwentyFortyEight.UI
             TileData tile
         )
         {
-            RectTransform cellRect = GetCellRect(position);
+            RectTransform cellRect =
+                GetCellRect(position);
 
             TileView tileView = Instantiate(
                 tilePrefab,
@@ -268,21 +376,27 @@ namespace TwentyFortyEight.UI
                 position.Row * boardSize +
                 position.Col;
 
-            if (index < 0 || index >= cellGrid.childCount)
+            if (
+                index < 0 ||
+                index >= cellGrid.childCount
+            )
             {
                 throw new InvalidOperationException(
-                    $"No cell RectTransform found for position {position}. " +
-                    $"Expected at least {boardSize * boardSize} cells under CellGrid."
+                    $"No cell RectTransform found for " +
+                    $"position {position}. Expected at least " +
+                    $"{boardSize * boardSize} cells under CellGrid."
                 );
             }
 
             RectTransform cellRect =
-                cellGrid.GetChild(index) as RectTransform;
+                cellGrid.GetChild(index)
+                    as RectTransform;
 
             if (cellRect == null)
             {
                 throw new InvalidOperationException(
-                    $"Cell at index {index} does not have a RectTransform."
+                    $"Cell at index {index} does not " +
+                    "have a RectTransform."
                 );
             }
 
@@ -308,7 +422,8 @@ namespace TwentyFortyEight.UI
                 );
             }
 
-            Vector3[] worldCorners = new Vector3[4];
+            Vector3[] worldCorners =
+                new Vector3[4];
 
             cellRect.GetWorldCorners(worldCorners);
 
@@ -323,13 +438,17 @@ namespace TwentyFortyEight.UI
                 );
 
             Vector2 size = new Vector2(
-                topRightLocal.x - bottomLeftLocal.x,
-                topRightLocal.y - bottomLeftLocal.y
+                topRightLocal.x -
+                    bottomLeftLocal.x,
+                topRightLocal.y -
+                    bottomLeftLocal.y
             );
 
             Vector2 center = new Vector2(
-                bottomLeftLocal.x + size.x / 2f,
-                bottomLeftLocal.y + size.y / 2f
+                bottomLeftLocal.x +
+                    size.x / 2f,
+                bottomLeftLocal.y +
+                    size.y / 2f
             );
 
             tileRect.anchorMin =
@@ -344,7 +463,8 @@ namespace TwentyFortyEight.UI
             tileRect.anchoredPosition = center;
             tileRect.sizeDelta = size;
             tileRect.localScale = Vector3.one;
-            tileRect.localRotation = Quaternion.identity;
+            tileRect.localRotation =
+                Quaternion.identity;
         }
 
         private void HandleTileClicked(
@@ -367,7 +487,8 @@ namespace TwentyFortyEight.UI
             if (cellGrid == null)
             {
                 throw new InvalidOperationException(
-                    "BoardView is missing a CellGrid reference."
+                    "BoardView is missing a " +
+                    "CellGrid reference."
                 );
             }
         }
@@ -377,7 +498,8 @@ namespace TwentyFortyEight.UI
             if (tileLayer == null)
             {
                 throw new InvalidOperationException(
-                    "BoardView is missing a TileLayer reference."
+                    "BoardView is missing a " +
+                    "TileLayer reference."
                 );
             }
         }
@@ -387,7 +509,8 @@ namespace TwentyFortyEight.UI
             if (tilePrefab == null)
             {
                 throw new InvalidOperationException(
-                    "BoardView is missing a TileView prefab reference."
+                    "BoardView is missing a " +
+                    "TileView prefab reference."
                 );
             }
         }
@@ -397,11 +520,15 @@ namespace TwentyFortyEight.UI
             int requiredCellCount =
                 boardSize * boardSize;
 
-            if (cellGrid.childCount < requiredCellCount)
+            if (
+                cellGrid.childCount <
+                requiredCellCount
+            )
             {
                 throw new InvalidOperationException(
                     $"CellGrid has {cellGrid.childCount} children, " +
-                    $"but BoardView requires at least {requiredCellCount}."
+                    $"but BoardView requires at least " +
+                    $"{requiredCellCount}."
                 );
             }
         }
@@ -412,6 +539,21 @@ namespace TwentyFortyEight.UI
             {
                 boardSize = 2;
             }
+
+            moveDuration =
+                Mathf.Max(0f, moveDuration);
+
+            mergeDuration =
+                Mathf.Max(0f, mergeDuration);
+
+            spawnDuration =
+                Mathf.Max(0f, spawnDuration);
+
+            killDuration =
+                Mathf.Max(0f, killDuration);
+
+            mergeScale =
+                Mathf.Max(1f, mergeScale);
         }
     }
 }

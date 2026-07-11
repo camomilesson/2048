@@ -8,6 +8,10 @@ namespace TwentyFortyEight.Core
         public const int DefaultMaxKillCharges = 2;
         public const int DefaultMaxNukeCharges = 1;
 
+        public const int DefaultInitialUndoCharges = 0;
+        public const int DefaultInitialKillCharges = 0;
+        public const int DefaultInitialNukeCharges = 0;
+
         private int undoCharges;
         private int killCharges;
         private int nukeCharges;
@@ -15,6 +19,10 @@ namespace TwentyFortyEight.Core
         public int MaxUndoCharges { get; }
         public int MaxKillCharges { get; }
         public int MaxNukeCharges { get; }
+
+        public int InitialUndoCharges { get; }
+        public int InitialKillCharges { get; }
+        public int InitialNukeCharges { get; }
 
         public int UndoCharges
         {
@@ -43,25 +51,61 @@ namespace TwentyFortyEight.Core
         public PowerupCharges(
             int maxUndoCharges = DefaultMaxUndoCharges,
             int maxKillCharges = DefaultMaxKillCharges,
-            int maxNukeCharges = DefaultMaxNukeCharges
+            int maxNukeCharges = DefaultMaxNukeCharges,
+            int initialUndoCharges = DefaultInitialUndoCharges,
+            int initialKillCharges = DefaultInitialKillCharges,
+            int initialNukeCharges = DefaultInitialNukeCharges
         )
         {
-            ValidateMaxCharges(maxUndoCharges, nameof(maxUndoCharges));
-            ValidateMaxCharges(maxKillCharges, nameof(maxKillCharges));
-            ValidateMaxCharges(maxNukeCharges, nameof(maxNukeCharges));
+            ValidateMaxCharges(
+                maxUndoCharges,
+                nameof(maxUndoCharges)
+            );
+
+            ValidateMaxCharges(
+                maxKillCharges,
+                nameof(maxKillCharges)
+            );
+
+            ValidateMaxCharges(
+                maxNukeCharges,
+                nameof(maxNukeCharges)
+            );
+
+            ValidateInitialCharges(
+                initialUndoCharges,
+                maxUndoCharges,
+                nameof(initialUndoCharges)
+            );
+
+            ValidateInitialCharges(
+                initialKillCharges,
+                maxKillCharges,
+                nameof(initialKillCharges)
+            );
+
+            ValidateInitialCharges(
+                initialNukeCharges,
+                maxNukeCharges,
+                nameof(initialNukeCharges)
+            );
 
             MaxUndoCharges = maxUndoCharges;
             MaxKillCharges = maxKillCharges;
             MaxNukeCharges = maxNukeCharges;
+
+            InitialUndoCharges = initialUndoCharges;
+            InitialKillCharges = initialKillCharges;
+            InitialNukeCharges = initialNukeCharges;
 
             Reset();
         }
 
         public void Reset()
         {
-            undoCharges = 0;
-            killCharges = 0;
-            nukeCharges = 0;
+            undoCharges = InitialUndoCharges;
+            killCharges = InitialKillCharges;
+            nukeCharges = InitialNukeCharges;
         }
 
         public int GetCharges(PowerupType type)
@@ -171,7 +215,8 @@ namespace TwentyFortyEight.Core
                 return false;
             }
 
-            int newCharges = Math.Min(currentCharges + amount, maxCharges);
+            int newCharges =
+                Math.Min(currentCharges + amount, maxCharges);
 
             switch (type)
             {
@@ -196,7 +241,46 @@ namespace TwentyFortyEight.Core
             }
         }
 
-        private static void ValidateMaxCharges(int value, string parameterName)
+        public PowerupChargeSnapshot CreateSnapshot()
+        {
+            return new PowerupChargeSnapshot(
+                undoCharges,
+                killCharges,
+                nukeCharges
+            );
+        }
+
+        public void RestoreSnapshot(
+            PowerupChargeSnapshot snapshot
+        )
+        {
+            if (snapshot == null)
+            {
+                throw new ArgumentNullException(
+                    nameof(snapshot)
+                );
+            }
+
+            undoCharges = Math.Min(
+                snapshot.UndoCharges,
+                MaxUndoCharges
+            );
+
+            killCharges = Math.Min(
+                snapshot.KillCharges,
+                MaxKillCharges
+            );
+
+            nukeCharges = Math.Min(
+                snapshot.NukeCharges,
+                MaxNukeCharges
+            );
+        }
+
+        private static void ValidateMaxCharges(
+            int value,
+            string parameterName
+        )
         {
             if (value < 0)
             {
@@ -207,25 +291,27 @@ namespace TwentyFortyEight.Core
             }
         }
 
-        public PowerupChargeSnapshot CreateSnapshot()
+        private static void ValidateInitialCharges(
+            int initialValue,
+            int maximumValue,
+            string parameterName
+        )
         {
-            return new PowerupChargeSnapshot(
-                undoCharges,
-                killCharges,
-                nukeCharges
-            );
-        }
-
-        public void RestoreSnapshot(PowerupChargeSnapshot snapshot)
-        {
-            if (snapshot == null)
+            if (initialValue < 0)
             {
-                throw new ArgumentNullException(nameof(snapshot));
+                throw new ArgumentOutOfRangeException(
+                    parameterName,
+                    "Initial charges cannot be negative."
+                );
             }
 
-            undoCharges = Math.Min(snapshot.UndoCharges, MaxUndoCharges);
-            killCharges = Math.Min(snapshot.KillCharges, MaxKillCharges);
-            nukeCharges = Math.Min(snapshot.NukeCharges, MaxNukeCharges);
+            if (initialValue > maximumValue)
+            {
+                throw new ArgumentOutOfRangeException(
+                    parameterName,
+                    $"Initial charges cannot exceed the maximum of {maximumValue}."
+                );
+            }
         }
     }
 }

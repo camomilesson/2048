@@ -46,7 +46,10 @@ namespace TwentyFortyEight.UI
             }
         }
 
-        public void Initialize(CellPosition tilePosition, TileData tile)
+        public void Initialize(
+            CellPosition tilePosition,
+            TileData tile
+        )
         {
             if (tile == null)
             {
@@ -110,7 +113,8 @@ namespace TwentyFortyEight.UI
             }
 
             backgroundImage.sprite = null;
-            backgroundImage.color = GetFallbackBackgroundColor(value);
+            backgroundImage.color =
+                GetFallbackBackgroundColor(value);
         }
 
         private void HandleClick()
@@ -122,18 +126,41 @@ namespace TwentyFortyEight.UI
         {
             switch (value)
             {
-                case 2: return new Color32(238, 228, 218, 255);
-                case 4: return new Color32(237, 224, 200, 255);
-                case 8: return new Color32(242, 177, 121, 255);
-                case 16: return new Color32(245, 149, 99, 255);
-                case 32: return new Color32(246, 124, 95, 255);
-                case 64: return new Color32(246, 94, 59, 255);
-                case 128: return new Color32(237, 207, 114, 255);
-                case 256: return new Color32(237, 204, 97, 255);
-                case 512: return new Color32(237, 200, 80, 255);
-                case 1024: return new Color32(237, 197, 63, 255);
-                case 2048: return new Color32(237, 194, 46, 255);
-                default: return new Color32(60, 58, 50, 255);
+                case 2:
+                    return new Color32(238, 228, 218, 255);
+
+                case 4:
+                    return new Color32(237, 224, 200, 255);
+
+                case 8:
+                    return new Color32(242, 177, 121, 255);
+
+                case 16:
+                    return new Color32(245, 149, 99, 255);
+
+                case 32:
+                    return new Color32(246, 124, 95, 255);
+
+                case 64:
+                    return new Color32(246, 94, 59, 255);
+
+                case 128:
+                    return new Color32(237, 207, 114, 255);
+
+                case 256:
+                    return new Color32(237, 204, 97, 255);
+
+                case 512:
+                    return new Color32(237, 200, 80, 255);
+
+                case 1024:
+                    return new Color32(237, 197, 63, 255);
+
+                case 2048:
+                    return new Color32(237, 194, 46, 255);
+
+                default:
+                    return new Color32(60, 58, 50, 255);
             }
         }
 
@@ -144,14 +171,23 @@ namespace TwentyFortyEight.UI
 
             rectTransform.localScale = Vector3.zero;
 
+            if (duration <= 0f)
+            {
+                rectTransform.localScale = Vector3.one;
+                yield break;
+            }
+
             float elapsed = 0f;
 
             while (elapsed < duration)
             {
                 elapsed += Time.unscaledDeltaTime;
 
-                float progress = Mathf.Clamp01(elapsed / duration);
-                float easedProgress = 1f - Mathf.Pow(1f - progress, 3f);
+                float progress =
+                    Mathf.Clamp01(elapsed / duration);
+
+                float easedProgress =
+                    1f - Mathf.Pow(1f - progress, 3f);
 
                 rectTransform.localScale =
                     Vector3.LerpUnclamped(
@@ -173,6 +209,12 @@ namespace TwentyFortyEight.UI
         {
             RectTransform rectTransform =
                 GetComponent<RectTransform>();
+
+            if (duration <= 0f)
+            {
+                rectTransform.localScale = Vector3.one;
+                yield break;
+            }
 
             float halfDuration = duration / 2f;
             float elapsed = 0f;
@@ -212,6 +254,71 @@ namespace TwentyFortyEight.UI
             }
 
             rectTransform.localScale = Vector3.one;
+        }
+
+        public IEnumerator PlayKillAnimation(float duration)
+        {
+            RectTransform rectTransform =
+                GetComponent<RectTransform>();
+
+            CanvasGroup canvasGroup =
+                GetComponent<CanvasGroup>();
+
+            if (canvasGroup == null)
+            {
+                canvasGroup =
+                    gameObject.AddComponent<CanvasGroup>();
+            }
+
+            // Stop this tile from receiving further clicks without
+            // changing the Button's visual interactable state.
+            canvasGroup.interactable = false;
+            canvasGroup.blocksRaycasts = false;
+
+            Vector3 startingScale =
+                rectTransform.localScale;
+
+            float startingAlpha =
+                canvasGroup.alpha;
+
+            if (duration <= 0f)
+            {
+                rectTransform.localScale = Vector3.zero;
+                canvasGroup.alpha = 0f;
+                yield break;
+            }
+
+            float elapsed = 0f;
+
+            while (elapsed < duration)
+            {
+                elapsed += Time.unscaledDeltaTime;
+
+                float progress =
+                    Mathf.Clamp01(elapsed / duration);
+
+                float easedProgress =
+                    Mathf.SmoothStep(0f, 1f, progress);
+
+                rectTransform.localScale =
+                    Vector3.LerpUnclamped(
+                        startingScale,
+                        Vector3.zero,
+                        easedProgress
+                    );
+
+                canvasGroup.alpha =
+                    Mathf.Lerp(
+                        startingAlpha,
+                        0f,
+                        easedProgress
+                    );
+
+                yield return null;
+            }
+
+            rectTransform.localScale = Vector3.zero;
+            canvasGroup.alpha = 0f;
         }
     }
 }

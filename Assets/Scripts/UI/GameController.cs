@@ -32,6 +32,16 @@ namespace TwentyFortyEight.UI
         [SerializeField] private PowerupButtonView nukeButtonView;
         [SerializeField] private Button statsButton;
 
+        [Header("Initial Powerups")]
+        [SerializeField, Range(0, PowerupCharges.DefaultMaxUndoCharges)]
+        private int initialUndoCharges;
+
+        [SerializeField, Range(0, PowerupCharges.DefaultMaxKillCharges)]
+        private int initialKillCharges;
+
+        [SerializeField, Range(0, PowerupCharges.DefaultMaxNukeCharges)]
+        private int initialNukeCharges;
+
         [Header("Swipe Input")]
         [SerializeField] private RectTransform swipeArea;
         [SerializeField] private float swipeAreaPadding = 20f;
@@ -58,8 +68,17 @@ namespace TwentyFortyEight.UI
             StatsData statsData = statsStore.Load();
             statsManager = new StatsManager(statsData);
 
-            game = new GameManager();
+            PowerupCharges powerupCharges =
+                new PowerupCharges(
+                    initialUndoCharges: initialUndoCharges,
+                    initialKillCharges: initialKillCharges,
+                    initialNukeCharges: initialNukeCharges
+                );
 
+            game = new GameManager(
+                powerupCharges: powerupCharges
+            );
+            
             gameStateStore = new GameStateStore();
 
             bool loadedSavedGame = gameStateStore.TryLoad(out GameSnapshot savedSnapshot);
@@ -396,7 +415,23 @@ namespace TwentyFortyEight.UI
                 return;
             }
 
-            GameActionResult result = game.UseKillPowerup(position);
+            StartCoroutine(
+                HandleKillRoutine(position)
+            );
+        }
+
+        private IEnumerator HandleKillRoutine(
+            CellPosition position
+        )
+        {
+            SetAnimationState(true);
+
+            // Exit selection mode immediately so the controller is
+            // back in its normal state once the animation ends.
+            selectionMode = SelectionMode.None;
+
+            GameActionResult result =
+                game.UseKillPowerup(position);
 
             Debug.Log(result.ToString());
 
@@ -407,14 +442,23 @@ namespace TwentyFortyEight.UI
                 game.Score
             );
 
-            if (result.Changed)
+            if (!result.Changed)
             {
-                SaveAll();
+                SetAnimationState(false);
+                RefreshAll();
+                yield break;
             }
 
-            selectionMode = SelectionMode.None;
+            SaveAll();
 
-            RefreshAll();
+            yield return boardView.AnimateKill(
+                position,
+                game.Board
+            );
+
+            RefreshGameStateOverlay();
+
+            SetAnimationState(false);
         }
 
         private void RefreshAll()
