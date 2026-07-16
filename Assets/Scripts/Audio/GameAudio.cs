@@ -26,7 +26,6 @@ namespace TwentyFortyEight.Audio
         [SerializeField] private AudioClip buttonClickClip;
         [SerializeField] private AudioClip[] swipeClips;
         private int lastSwipeIndex = -1;
-        [SerializeField] private AudioClip mergeClip;
         [SerializeField] private AudioClip winClip;
         [SerializeField] private AudioClip loseClip;
 
@@ -36,9 +35,6 @@ namespace TwentyFortyEight.Audio
 
         [SerializeField, Range(0f, 1f)]
         private float swipeVolume = 0.45f;
-
-        [SerializeField, Range(0f, 1f)]
-        private float mergeVolume = 0.8f;
 
         [SerializeField, Range(0f, 1f)]
         private float winVolume = 0.9f;
@@ -107,14 +103,6 @@ namespace TwentyFortyEight.Audio
             PlaySfx(
                 swipeClips[selectedIndex],
                 swipeVolume
-            );
-        }
-
-        public void PlayMerge()
-        {
-            PlaySfx(
-                mergeClip,
-                mergeVolume
             );
         }
 

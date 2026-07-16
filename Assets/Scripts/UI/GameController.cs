@@ -156,8 +156,6 @@ namespace TwentyFortyEight.UI
             }
 
             boardView.TileClicked += HandleTileClicked;
-            boardView.MergeAnimationStarted +=
-                HandleMergeAnimationStarted;
 
             if (gameStateOverlayView != null)
             {
@@ -278,8 +276,6 @@ namespace TwentyFortyEight.UI
             if (boardView != null)
             {
                 boardView.TileClicked -= HandleTileClicked;
-                boardView.MergeAnimationStarted -=
-                    HandleMergeAnimationStarted;
             }
 
             if (gameStateOverlayView != null)
@@ -1106,14 +1102,6 @@ namespace TwentyFortyEight.UI
             }
 
             RefreshAll();
-        }
-
-        private void HandleMergeAnimationStarted()
-        {
-            if (gameAudio != null)
-            {
-                gameAudio.PlayMerge();
-            }
         }
 
         private void ApplyAudioSettings()
