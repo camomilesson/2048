@@ -1,22 +1,22 @@
 fileFormatVersion: 2
-guid: ad7d5ba5add664c74902560d2ac4e70b
+guid: a2b0802e96d454a9eaf531072deffb34
 TextureImporter:
   internalIDToNameTable:
   - first:
-      213: -4298154599313345612
-    second: TopScreenPicture_0
+      213: -4482988404291292151
+    second: Banner_Default_0
   - first:
-      213: -4754348676459104870
-    second: TopScreenPicture_1
+      213: -3169878783689995053
+    second: Banner_Default_1
   - first:
-      213: 5350318654748413871
-    second: TopScreenPicture_2
+      213: -7340941978837880050
+    second: Banner_Default_2
   - first:
-      213: -666907733553140097
-    second: TopScreenPicture_3
+      213: -2977667266044078306
+    second: Banner_Default_3
   - first:
-      213: 5862323043787820950
-    second: TopScreenPicture_4
+      213: 8955894510757166949
+    second: Banner_Default_4
   externalObjects: {}
   serializedVersion: 13
   mipmaps:

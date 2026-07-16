@@ -1,13 +1,13 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using TwentyFortyEight.Audio;
 using TwentyFortyEight.Core;
+using TwentyFortyEight.Persistence;
+using TwentyFortyEight.Settings;
+using TwentyFortyEight.Stats;
 using UnityEngine;
 using UnityEngine.UI;
-using TwentyFortyEight.Stats;
-using TwentyFortyEight.Persistence;
-using TwentyFortyEight.Audio;
-using TwentyFortyEight.Settings;
 
 namespace TwentyFortyEight.UI
 {
@@ -19,6 +19,13 @@ namespace TwentyFortyEight.UI
             Kill
         }
 
+        private enum PendingConfirmationAction
+        {
+            None,
+            StartNewGame,
+            ClearStats
+        }
+
         [Header("Screens")]
         [SerializeField] private GameObject mainScreenRoot;
         [SerializeField] private StatsScreenView statsScreenView;
@@ -28,6 +35,8 @@ namespace TwentyFortyEight.UI
         [SerializeField] private BoardView boardView;
         [SerializeField] private ScoreView scoreView;
         [SerializeField] private GameStateOverlayView gameStateOverlayView;
+        [SerializeField] private ConfirmationDialogView confirmationDialogView;
+        [SerializeField] private BannerMessageView bannerMessageView;
 
         [Header("Buttons")]
         [SerializeField] private Button newGameButton;
@@ -63,49 +72,67 @@ namespace TwentyFortyEight.UI
         [Header("Audio")]
         [SerializeField] private GameAudio gameAudio;
 
-        private GameManager game;
-        private StatsStore statsStore;
-        private StatsManager statsManager;
-        private GameStateStore gameStateStore;
-        private GameSettingsStore settingsStore;
-        private GameSettingsData settingsData;
-        private SelectionMode selectionMode;
-        private Vector2 pointerDownPosition;
-        private bool isPointerDown;
-        private bool suppressPointerInputUntilRelease;
-        private bool isStatsScreenOpen;
-        private bool isSettingsScreenOpen;
-        private bool isAnimating;
-
         private readonly Queue<Direction> moveQueue =
             new Queue<Direction>();
 
-        private bool IsSecondaryScreenOpen
+        private GameManager game;
+        private GameStateStore gameStateStore;
+        private StatsStore statsStore;
+        private StatsManager statsManager;
+        private GameSettingsStore settingsStore;
+        private GameSettingsData settingsData;
+
+        private SelectionMode selectionMode;
+        private PendingConfirmationAction pendingConfirmationAction;
+
+        private Vector2 pointerDownPosition;
+        private bool isPointerDown;
+        private bool suppressPointerInputUntilRelease;
+
+        private bool isStatsScreenOpen;
+        private bool isSettingsScreenOpen;
+        private bool isConfirmationDialogOpen;
+
+        private bool isAnimating;
+        private bool isProcessingMoveQueue;
+
+        private bool recordCurrentGameOnNextChangedAction;
+        private bool showSwipeHintForCurrentGame;
+
+        private bool IsGameplayInputBlocked
         {
             get
             {
                 return
                     isStatsScreenOpen ||
-                    isSettingsScreenOpen;
+                    isSettingsScreenOpen ||
+                    isConfirmationDialogOpen;
             }
         }
 
-        private bool isProcessingMoveQueue;
+        private bool IsMainScreenVisible
+        {
+            get
+            {
+                return
+                    mainScreenRoot == null ||
+                    mainScreenRoot.activeInHierarchy;
+            }
+        }
+
+        #region Unity lifecycle
 
         private void Awake()
         {
             ValidateReferences();
 
             statsStore = new StatsStore();
+            statsManager = new StatsManager(
+                statsStore.Load()
+            );
 
-            StatsData statsData = statsStore.Load();
-            statsManager = new StatsManager(statsData);
-
-            settingsStore =
-                new GameSettingsStore();
-
-            settingsData =
-                settingsStore.Load();
+            settingsStore = new GameSettingsStore();
+            settingsData = settingsStore.Load();
 
             PowerupCharges powerupCharges =
                 new PowerupCharges(
@@ -117,60 +144,102 @@ namespace TwentyFortyEight.UI
             game = new GameManager(
                 powerupCharges: powerupCharges
             );
-            
+
             gameStateStore = new GameStateStore();
 
-            bool loadedSavedGame = gameStateStore.TryLoad(out GameSnapshot savedSnapshot);
+            bool loadedSavedGame =
+                gameStateStore.TryLoad(
+                    out GameSnapshot savedSnapshot
+                );
 
             if (loadedSavedGame)
             {
-                game.RestoreFromSnapshot(savedSnapshot);
+                game.RestoreFromSnapshot(
+                    savedSnapshot
+                );
             }
             else
             {
                 statsManager.RecordGameStarted();
-                SaveStats();
-                SaveCurrentGame();
+                SaveAll();
             }
 
             selectionMode = SelectionMode.None;
+            pendingConfirmationAction =
+                PendingConfirmationAction.None;
+
+            showSwipeHintForCurrentGame =
+                !loadedSavedGame;
+
+            /*
+             * Clear Stats intentionally leaves the current board in place.
+             * If the app was closed before the next successful action,
+             * restore the deferred "current game started" bookkeeping.
+             */
+            recordCurrentGameOnNextChangedAction =
+                loadedSavedGame &&
+                HasNoRecordedStats(statsManager.Data);
         }
 
         private void OnEnable()
         {
-            newGameButton.onClick.AddListener(StartNewGame);
+            newGameButton.onClick.AddListener(
+                StartNewGame
+            );
 
-            if (undoButtonView != null && undoButtonView.Button != null)
+            if (
+                undoButtonView != null &&
+                undoButtonView.Button != null
+            )
             {
-                undoButtonView.Button.onClick.AddListener(UseUndo);
+                undoButtonView.Button.onClick.AddListener(
+                    UseUndo
+                );
             }
 
-            if (killButtonView != null && killButtonView.Button != null)
+            if (
+                killButtonView != null &&
+                killButtonView.Button != null
+            )
             {
-                killButtonView.Button.onClick.AddListener(ToggleKillSelection);
+                killButtonView.Button.onClick.AddListener(
+                    ToggleKillSelection
+                );
             }
 
-            if (nukeButtonView != null && nukeButtonView.Button != null)
+            if (
+                nukeButtonView != null &&
+                nukeButtonView.Button != null
+            )
             {
-                nukeButtonView.Button.onClick.AddListener(UseNuke);
+                nukeButtonView.Button.onClick.AddListener(
+                    UseNuke
+                );
             }
 
-            boardView.TileClicked += HandleTileClicked;
+            boardView.TileClicked +=
+                HandleTileClicked;
 
             if (gameStateOverlayView != null)
             {
-                gameStateOverlayView.ContinueClicked += ContinueAfterWin;
-                gameStateOverlayView.NewGameClicked += StartNewGame;
+                gameStateOverlayView.ContinueClicked +=
+                    ContinueAfterWin;
+
+                gameStateOverlayView.NewGameClicked +=
+                    StartNewGame;
             }
 
             if (statsButton != null)
             {
-                statsButton.onClick.AddListener(ShowStatsScreen);
+                statsButton.onClick.AddListener(
+                    ShowStatsScreen
+                );
             }
 
             if (statsScreenView != null)
             {
-                statsScreenView.BackClicked += HideStatsScreen;
+                statsScreenView.BackClicked +=
+                    HideStatsScreen;
             }
 
             if (settingsButton != null)
@@ -194,6 +263,15 @@ namespace TwentyFortyEight.UI
                 settingsScreenView.ClearStatsRequested +=
                     HandleClearStatsRequested;
             }
+
+            if (confirmationDialogView != null)
+            {
+                confirmationDialogView.Confirmed +=
+                    HandleConfirmationConfirmed;
+
+                confirmationDialogView.Cancelled +=
+                    HandleConfirmationCancelled;
+            }
         }
 
         private void Start()
@@ -203,48 +281,25 @@ namespace TwentyFortyEight.UI
                 mainScreenRoot.SetActive(true);
             }
 
-            if (statsScreenView != null)
-            {
-                statsScreenView.Hide();
-            }
-
-            if (settingsScreenView != null)
-            {
-                settingsScreenView.Hide();
-
-                // Enable this after the confirmation
-                // dialog is implemented.
-                settingsScreenView.SetClearStatsInteractable(
-                    false
-                );
-            }
+            statsScreenView?.Hide();
+            settingsScreenView?.Hide();
+            confirmationDialogView?.Hide();
 
             ApplyAudioSettings();
 
-            RefreshAll();
+            RefreshAll(
+                immediateBanner: true
+            );
         }
 
         private void Update()
         {
-            if (IsSecondaryScreenOpen)
-            {
-                ResetPointerState();
-                return;
-            }
-
-            if (selectionMode != SelectionMode.None)
-            {
-                ResetPointerState();
-                return;
-            }
-
-            if (isAnimating && !isProcessingMoveQueue)
-            {
-                ResetPointerState();
-                return;
-            }
-
-            if (game.Status != GameStatus.Playing)
+            if (
+                IsGameplayInputBlocked ||
+                selectionMode != SelectionMode.None ||
+                (isAnimating && !isProcessingMoveQueue) ||
+                game.Status != GameStatus.Playing
+            )
             {
                 ResetPointerState();
                 return;
@@ -253,45 +308,71 @@ namespace TwentyFortyEight.UI
             HandleKeyboardInput();
             HandlePointerInput();
         }
-        
+
         private void OnDisable()
         {
-            newGameButton.onClick.RemoveListener(StartNewGame);
+            newGameButton.onClick.RemoveListener(
+                StartNewGame
+            );
 
-            if (undoButtonView != null && undoButtonView.Button != null)
+            if (
+                undoButtonView != null &&
+                undoButtonView.Button != null
+            )
             {
-                undoButtonView.Button.onClick.RemoveListener(UseUndo);
+                undoButtonView.Button.onClick.RemoveListener(
+                    UseUndo
+                );
             }
 
-            if (killButtonView != null && killButtonView.Button != null)
+            if (
+                killButtonView != null &&
+                killButtonView.Button != null
+            )
             {
-                killButtonView.Button.onClick.RemoveListener(ToggleKillSelection);
+                killButtonView.Button.onClick.RemoveListener(
+                    ToggleKillSelection
+                );
             }
 
-            if (nukeButtonView != null && nukeButtonView.Button != null)
+            if (
+                nukeButtonView != null &&
+                nukeButtonView.Button != null
+            )
             {
-                nukeButtonView.Button.onClick.RemoveListener(UseNuke);
+                nukeButtonView.Button.onClick.RemoveListener(
+                    UseNuke
+                );
             }
 
             if (boardView != null)
             {
-                boardView.TileClicked -= HandleTileClicked;
+                boardView.TileClicked -=
+                    HandleTileClicked;
+
+                boardView.SetKillSelectionMode(false);
             }
 
             if (gameStateOverlayView != null)
             {
-                gameStateOverlayView.ContinueClicked -= ContinueAfterWin;
-                gameStateOverlayView.NewGameClicked -= StartNewGame;
+                gameStateOverlayView.ContinueClicked -=
+                    ContinueAfterWin;
+
+                gameStateOverlayView.NewGameClicked -=
+                    StartNewGame;
             }
 
             if (statsButton != null)
             {
-                statsButton.onClick.RemoveListener(ShowStatsScreen);
+                statsButton.onClick.RemoveListener(
+                    ShowStatsScreen
+                );
             }
 
             if (statsScreenView != null)
             {
-                statsScreenView.BackClicked -= HideStatsScreen;
+                statsScreenView.BackClicked -=
+                    HideStatsScreen;
             }
 
             if (settingsButton != null)
@@ -316,55 +397,334 @@ namespace TwentyFortyEight.UI
                     HandleClearStatsRequested;
             }
 
+            if (confirmationDialogView != null)
+            {
+                confirmationDialogView.Confirmed -=
+                    HandleConfirmationConfirmed;
+
+                confirmationDialogView.Cancelled -=
+                    HandleConfirmationCancelled;
+            }
+
+            undoButtonView?.SetAttention(false);
+            killButtonView?.SetAttention(false);
+            nukeButtonView?.SetAttention(false);
+
             moveQueue.Clear();
+
+            selectionMode = SelectionMode.None;
+            pendingConfirmationAction =
+                PendingConfirmationAction.None;
+
             isProcessingMoveQueue = false;
+            isConfirmationDialogOpen = false;
             isAnimating = false;
+
             ResetPointerState();
         }
 
-        private void SetAnimationState(bool animating)
+        private void OnApplicationPause(
+            bool pauseStatus
+        )
         {
-            isAnimating = animating;
-
-            if (!animating)
+            if (!pauseStatus)
             {
-                RefreshButtons();
+                return;
             }
+
+            SaveAll();
+            SaveSettings();
         }
+
+        private void OnApplicationQuit()
+        {
+            SaveAll();
+            SaveSettings();
+        }
+
+        #endregion
+
+        #region New game and confirmation
 
         public void StartNewGame()
         {
-            if (isAnimating)
+            if (
+                isAnimating ||
+                isConfirmationDialogOpen
+            )
             {
                 return;
             }
 
             ClearMoveQueue();
 
+            /*
+             * Leaving Kill mode before opening a modal avoids keeping
+             * a hidden board-selection state behind the dialog.
+             */
+            selectionMode = SelectionMode.None;
+            RefreshGameplayUx();
+
+            if (game.Status == GameStatus.GameOver)
+            {
+                StartNewGameImmediately();
+                return;
+            }
+
+            ShowConfirmation(
+                PendingConfirmationAction.StartNewGame,
+                title: "Start a new game?",
+                message:
+                    "Your current board and score will be lost.",
+                confirmLabel: "New Game"
+            );
+        }
+
+        private void StartNewGameImmediately()
+        {
+            ClearMoveQueue();
+
             selectionMode = SelectionMode.None;
 
             game.StartNewGame();
-
             statsManager.RecordGameStarted();
 
-            SaveAll();
+            recordCurrentGameOnNextChangedAction =
+                false;
 
+            showSwipeHintForCurrentGame =
+                true;
+
+            SaveAll();
             RefreshAll();
         }
 
-        public void UseUndo()
+        private void ShowConfirmation(
+            PendingConfirmationAction action,
+            string title,
+            string message,
+            string confirmLabel
+        )
         {
-            if (isAnimating)
+            if (confirmationDialogView == null)
             {
                 return;
             }
 
-            if (selectionMode != SelectionMode.None)
+            pendingConfirmationAction = action;
+            isConfirmationDialogOpen = true;
+
+            ClearMoveQueue();
+            SuppressPointerInputUntilReleased();
+            RefreshGameplayUx();
+
+            confirmationDialogView.Show(
+                title,
+                message,
+                confirmLabel
+            );
+        }
+
+        private void HandleConfirmationConfirmed()
+        {
+            PendingConfirmationAction action =
+                pendingConfirmationAction;
+
+            CloseConfirmationDialog();
+
+            switch (action)
             {
-                Debug.Log(
-                    "Cannot undo while selecting a tile."
+                case PendingConfirmationAction.StartNewGame:
+                    StartNewGameImmediately();
+                    break;
+
+                case PendingConfirmationAction.ClearStats:
+                    ClearStatsImmediately();
+                    break;
+
+                case PendingConfirmationAction.None:
+                    break;
+
+                default:
+                    throw new ArgumentOutOfRangeException(
+                        nameof(action),
+                        action,
+                        "Unknown confirmation action."
+                    );
+            }
+        }
+
+        private void HandleConfirmationCancelled()
+        {
+            CloseConfirmationDialog();
+        }
+
+        private void CloseConfirmationDialog()
+        {
+            confirmationDialogView?.Hide();
+
+            pendingConfirmationAction =
+                PendingConfirmationAction.None;
+
+            isConfirmationDialogOpen = false;
+
+            SuppressPointerInputUntilReleased();
+            RefreshGameplayUx();
+        }
+
+        #endregion
+
+        #region Moves
+
+        private void RequestMove(
+            Direction direction
+        )
+        {
+            if (
+                IsGameplayInputBlocked ||
+                selectionMode != SelectionMode.None ||
+                game.Status != GameStatus.Playing
+            )
+            {
+                return;
+            }
+
+            /*
+             * isAnimating can also mean a power-up animation.
+             * Only regular move animations accept buffered moves.
+             */
+            if (
+                isAnimating &&
+                !isProcessingMoveQueue
+            )
+            {
+                return;
+            }
+
+            if (!isProcessingMoveQueue)
+            {
+                moveQueue.Enqueue(direction);
+                isProcessingMoveQueue = true;
+
+                StartCoroutine(
+                    ProcessMoveQueue()
                 );
 
+                return;
+            }
+
+            /*
+             * maxBufferedMoves counts pending moves only.
+             * The currently animating move is not in the queue.
+             */
+            if (
+                moveQueue.Count >=
+                maxBufferedMoves
+            )
+            {
+                return;
+            }
+
+            moveQueue.Enqueue(direction);
+        }
+
+        private IEnumerator ProcessMoveQueue()
+        {
+            SetAnimationState(true);
+            ResetPointerState();
+
+            while (moveQueue.Count > 0)
+            {
+                if (
+                    game.Status != GameStatus.Playing ||
+                    IsGameplayInputBlocked ||
+                    selectionMode != SelectionMode.None
+                )
+                {
+                    moveQueue.Clear();
+                    break;
+                }
+
+                Direction direction =
+                    moveQueue.Dequeue();
+
+                yield return
+                    HandleSingleMoveRoutine(
+                        direction
+                    );
+            }
+
+            moveQueue.Clear();
+            isProcessingMoveQueue = false;
+
+            SetAnimationState(false);
+        }
+
+        private IEnumerator HandleSingleMoveRoutine(
+            Direction direction
+        )
+        {
+            GameActionResult result =
+                game.HandleMove(direction);
+
+            Debug.Log(result.ToString());
+
+            PrepareStatsForChangedAction(result);
+
+            statsManager.RecordMove(
+                result,
+                game.Board,
+                game.Score
+            );
+
+            if (!result.Changed)
+            {
+                yield break;
+            }
+
+            if (showSwipeHintForCurrentGame)
+            {
+                showSwipeHintForCurrentGame =
+                    false;
+
+                /*
+                 * The model has already calculated the new status,
+                 * so this correctly prefers "Use a power-up!" if the
+                 * first successful move also leaves no legal moves.
+                 */
+                RefreshContextualUx();
+            }
+
+            gameAudio?.PlaySwipe();
+
+            SaveAll();
+
+            yield return boardView.AnimateMove(
+                game.Board,
+                result
+            );
+
+            PlayEndStateSound(result);
+
+            scoreView.SetScores(
+                game.Score,
+                statsManager.Data.BestScore
+            );
+
+            RefreshGameStateOverlay();
+        }
+
+        #endregion
+
+        #region Power-ups
+
+        public void UseUndo()
+        {
+            if (
+                isAnimating ||
+                selectionMode != SelectionMode.None
+            )
+            {
                 return;
             }
 
@@ -385,6 +745,8 @@ namespace TwentyFortyEight.UI
 
             Debug.Log(result.ToString());
 
+            PrepareStatsForChangedAction(result);
+
             statsManager.RecordPowerupUse(
                 PowerupType.Undo,
                 result,
@@ -396,11 +758,11 @@ namespace TwentyFortyEight.UI
             {
                 SetAnimationState(false);
                 RefreshAll();
-
                 yield break;
             }
 
             SaveAll();
+            RefreshGameplayUx();
 
             yield return boardView.AnimateUndo(
                 game.Board
@@ -412,23 +774,16 @@ namespace TwentyFortyEight.UI
             );
 
             RefreshGameStateOverlay();
-
             SetAnimationState(false);
         }
 
         public void UseNuke()
         {
-            if (isAnimating)
+            if (
+                isAnimating ||
+                selectionMode != SelectionMode.None
+            )
             {
-                return;
-            }
-
-            if (selectionMode != SelectionMode.None)
-            {
-                Debug.Log(
-                    "Cannot nuke while selecting a tile."
-                );
-
                 return;
             }
 
@@ -449,6 +804,8 @@ namespace TwentyFortyEight.UI
 
             Debug.Log(result.ToString());
 
+            PrepareStatsForChangedAction(result);
+
             statsManager.RecordPowerupUse(
                 PowerupType.Nuke,
                 result,
@@ -460,13 +817,13 @@ namespace TwentyFortyEight.UI
             {
                 SetAnimationState(false);
                 RefreshAll();
-
                 yield break;
             }
 
             SaveAll();
+            RefreshGameplayUx();
 
-            uiVfx.PlayNukeVfx();
+            uiVfx?.PlayNukeVfx();
 
             yield return boardView.AnimateNuke(
                 game.Board
@@ -478,132 +835,6 @@ namespace TwentyFortyEight.UI
             SetAnimationState(false);
         }
 
-        private void HandleMove(Direction direction)
-        {
-            RequestMove(direction);
-        }
-
-        private void RequestMove(Direction direction)
-        {
-            if (IsSecondaryScreenOpen)
-            {
-                return;
-            }
-
-            if (selectionMode != SelectionMode.None)
-            {
-                return;
-            }
-
-            if (game.Status != GameStatus.Playing)
-            {
-                return;
-            }
-
-            /*
-            * isAnimating can also mean a power-up animation.
-            * Only regular move animations accept buffered moves.
-            */
-            if (isAnimating && !isProcessingMoveQueue)
-            {
-                return;
-            }
-
-            if (!isProcessingMoveQueue)
-            {
-                moveQueue.Enqueue(direction);
-                isProcessingMoveQueue = true;
-
-                StartCoroutine(ProcessMoveQueue());
-                return;
-            }
-
-            /*
-            * maxBufferedMoves counts pending moves only.
-            * The currently animating move is not in the queue.
-            */
-            if (moveQueue.Count >= maxBufferedMoves)
-            {
-                return;
-            }
-
-            moveQueue.Enqueue(direction);
-        }
-
-        private IEnumerator ProcessMoveQueue()
-        {
-            SetAnimationState(true);
-            ResetPointerState();
-
-            while (moveQueue.Count > 0)
-            {
-                if (
-                    game.Status != GameStatus.Playing ||
-                    IsSecondaryScreenOpen ||
-                    selectionMode != SelectionMode.None
-                )
-                {
-                    moveQueue.Clear();
-                    break;
-                }
-
-                Direction direction =
-                    moveQueue.Dequeue();
-
-                yield return HandleSingleMoveRoutine(
-                    direction
-                );
-            }
-
-            moveQueue.Clear();
-            isProcessingMoveQueue = false;
-
-            SetAnimationState(false);
-        }
-
-        private IEnumerator HandleSingleMoveRoutine(
-            Direction direction
-        )
-        {
-            GameActionResult result =
-                game.HandleMove(direction);
-
-            Debug.Log(result.ToString());
-
-            statsManager.RecordMove(
-                result,
-                game.Board,
-                game.Score
-            );
-
-            if (!result.Changed)
-            {
-                yield break;
-            }
-
-            if (gameAudio != null)
-            {
-                gameAudio.PlaySwipe();
-            }
-
-            UpdateBestScore();
-            SaveAll();
-
-            yield return boardView.AnimateMove(
-                game.Board,
-                result
-            );
-
-            PlayEndStateSound(result);
-
-            scoreView.SetScores(
-                game.Score,
-                statsManager.Data.BestScore
-            );
-
-            RefreshGameStateOverlay();
-        }
-
         private void ToggleKillSelection()
         {
             if (isAnimating)
@@ -613,53 +844,71 @@ namespace TwentyFortyEight.UI
 
             ClearMoveQueue();
 
-            if (selectionMode == SelectionMode.Kill)
+            if (
+                selectionMode ==
+                SelectionMode.Kill
+            )
             {
-                selectionMode = SelectionMode.None;
+                selectionMode =
+                    SelectionMode.None;
 
-                Debug.Log("Kill selection cancelled.");
+                Debug.Log(
+                    "Kill selection cancelled."
+                );
 
-                RefreshButtons();
+                RefreshGameplayUx();
                 return;
             }
 
-            if (!game.PowerupCharges.CanUse(PowerupType.Kill))
+            if (
+                !game.PowerupCharges.CanUse(
+                    PowerupType.Kill
+                )
+            )
             {
-                Debug.Log("Cannot kill: no Kill charges.");
                 return;
             }
 
-            bool hasTiles = game.Board.GetOccupiedPositions().Count > 0;
+            bool hasTiles =
+                game.Board
+                    .GetOccupiedPositions()
+                    .Count > 0;
 
             if (!hasTiles)
             {
-                Debug.Log("Cannot kill: board has no occupied tiles.");
                 return;
             }
 
-            selectionMode = SelectionMode.Kill;
+            selectionMode =
+                SelectionMode.Kill;
+
             isPointerDown = false;
-            suppressPointerInputUntilRelease = true;
+            suppressPointerInputUntilRelease =
+                true;
 
-            Debug.Log("Kill mode active. Click a tile to remove it.");
+            Debug.Log(
+                "Kill mode active. Click a tile to remove it."
+            );
 
-            RefreshButtons();
+            RefreshGameplayUx();
         }
 
-        private void HandleTileClicked(CellPosition position)
+        private void HandleTileClicked(
+            CellPosition position
+        )
         {
-            if (isAnimating)
+            if (
+                isAnimating ||
+                selectionMode != SelectionMode.Kill
+            )
             {
                 return;
             }
 
-            suppressPointerInputUntilRelease = true;
+            suppressPointerInputUntilRelease =
+                true;
+
             isPointerDown = false;
-
-            if (selectionMode != SelectionMode.Kill)
-            {
-                return;
-            }
 
             StartCoroutine(
                 HandleKillRoutine(position)
@@ -672,14 +921,15 @@ namespace TwentyFortyEight.UI
         {
             SetAnimationState(true);
 
-            // Exit selection mode immediately so the controller is
-            // back in its normal state once the animation ends.
-            selectionMode = SelectionMode.None;
+            selectionMode =
+                SelectionMode.None;
 
             GameActionResult result =
                 game.UseKillPowerup(position);
 
             Debug.Log(result.ToString());
+
+            PrepareStatsForChangedAction(result);
 
             statsManager.RecordPowerupUse(
                 PowerupType.Kill,
@@ -696,6 +946,7 @@ namespace TwentyFortyEight.UI
             }
 
             SaveAll();
+            RefreshGameplayUx();
 
             yield return boardView.AnimateKill(
                 position,
@@ -708,15 +959,228 @@ namespace TwentyFortyEight.UI
             SetAnimationState(false);
         }
 
-        private void RefreshAll()
+        #endregion
+
+        #region UI refresh
+
+        private void SetAnimationState(
+            bool animating
+        )
         {
-            UpdateBestScore();
+            if (isAnimating == animating)
+            {
+                return;
+            }
 
+            isAnimating = animating;
+
+            if (!animating)
+            {
+                RefreshGameplayUx();
+            }
+        }
+
+        private void RefreshAll(
+            bool immediateBanner = false
+        )
+        {
             boardView.Refresh(game.Board);
-            scoreView.SetScores(game.Score, statsManager.Data.BestScore);
 
-            RefreshButtons();
+            scoreView.SetScores(
+                game.Score,
+                statsManager.Data.BestScore
+            );
+
             RefreshGameStateOverlay();
+
+            if (IsMainScreenVisible)
+            {
+                RefreshGameplayUx(
+                    immediateBanner
+                );
+            }
+        }
+
+        private void RefreshGameplayUx(
+            bool immediateBanner = false
+        )
+        {
+            if (!IsMainScreenVisible)
+            {
+                return;
+            }
+
+            RefreshMenuButtons();
+            RefreshPowerupButtons();
+            RefreshContextualUx(
+                immediateBanner
+            );
+        }
+
+        private void RefreshMenuButtons()
+        {
+            bool interactable =
+                !isConfirmationDialogOpen;
+
+            newGameButton.interactable =
+                interactable;
+
+            if (statsButton != null)
+            {
+                statsButton.interactable =
+                    interactable;
+            }
+
+            if (settingsButton != null)
+            {
+                settingsButton.interactable =
+                    interactable;
+            }
+        }
+
+        private void RefreshPowerupButtons()
+        {
+            bool canInteract =
+                !IsGameplayInputBlocked;
+
+            bool canUsePowerups =
+                game.Status == GameStatus.Playing ||
+                game.Status == GameStatus.OutOfMoves;
+
+            bool isSelecting =
+                selectionMode != SelectionMode.None;
+
+            bool shouldHighlightRecovery =
+                game.Status == GameStatus.OutOfMoves &&
+                !IsGameplayInputBlocked;
+
+            if (undoButtonView != null)
+            {
+                bool canUseUndo =
+                    canUsePowerups &&
+                    !isSelecting &&
+                    game.CanUseUndoPowerup();
+
+                undoButtonView.SetInteractable(
+                    canInteract &&
+                    canUseUndo
+                );
+
+                undoButtonView.SetChargeCount(
+                    game.PowerupCharges.GetCharges(
+                        PowerupType.Undo
+                    )
+                );
+
+                undoButtonView.SetAttention(
+                    shouldHighlightRecovery &&
+                    canUseUndo
+                );
+            }
+
+            if (killButtonView != null)
+            {
+                bool canUseKill =
+                    canUsePowerups &&
+                    game.CanUseKillPowerup();
+
+                /*
+                 * Kill stays interactable while selected so pressing
+                 * the same button again can cancel target selection.
+                 */
+                killButtonView.SetInteractable(
+                    canInteract &&
+                    canUseKill
+                );
+
+                killButtonView.SetChargeCount(
+                    game.PowerupCharges.GetCharges(
+                        PowerupType.Kill
+                    )
+                );
+
+                killButtonView.SetAttention(
+                    shouldHighlightRecovery &&
+                    canUseKill
+                );
+            }
+
+            if (nukeButtonView != null)
+            {
+                bool canUseNuke =
+                    canUsePowerups &&
+                    !isSelecting &&
+                    game.CanUseNukePowerup();
+
+                nukeButtonView.SetInteractable(
+                    canInteract &&
+                    canUseNuke
+                );
+
+                nukeButtonView.SetChargeCount(
+                    game.PowerupCharges.GetCharges(
+                        PowerupType.Nuke
+                    )
+                );
+
+                nukeButtonView.SetAttention(
+                    shouldHighlightRecovery &&
+                    canUseNuke
+                );
+            }
+        }
+
+        private void RefreshContextualUx(
+            bool immediateBanner = false
+        )
+        {
+            bool killSelectionActive =
+                selectionMode ==
+                SelectionMode.Kill;
+
+            boardView.SetKillSelectionMode(
+                killSelectionActive
+            );
+
+            BannerMessageType bannerType;
+
+            /*
+             * Context priority:
+             * 1. An active target-selection instruction.
+             * 2. Recovery from an otherwise blocked board.
+             * 3. New-game onboarding.
+             * 4. The normal title banner.
+             */
+            if (killSelectionActive)
+            {
+                bannerType =
+                    BannerMessageType.ChooseTile;
+            }
+            else if (
+                game.Status ==
+                GameStatus.OutOfMoves
+            )
+            {
+                bannerType =
+                    BannerMessageType.UsePowerup;
+            }
+            else if (
+                showSwipeHintForCurrentGame
+            )
+            {
+                bannerType =
+                    BannerMessageType.SwipeToMerge;
+            }
+            else
+            {
+                bannerType =
+                    BannerMessageType.Default;
+            }
+
+            bannerMessageView.Show(
+                bannerType,
+                immediateBanner
+            );
         }
 
         private void RefreshGameStateOverlay()
@@ -726,53 +1190,30 @@ namespace TwentyFortyEight.UI
                 return;
             }
 
-            if (game.Status == GameStatus.Won)
+            switch (game.Status)
             {
-                gameStateOverlayView.ShowWin();
+                case GameStatus.Won:
+                    gameStateOverlayView.ShowWin();
+                    break;
+
+                case GameStatus.GameOver:
+                    gameStateOverlayView.ShowGameOver();
+                    break;
+
+                default:
+                    gameStateOverlayView.Hide();
+                    break;
             }
-            else if (game.Status == GameStatus.GameOver)
-            {
-                gameStateOverlayView.ShowGameOver();
-            }
-            else
-            {
-                gameStateOverlayView.Hide();
-            }
-        }
-
-        private void UpdateBestScore()
-        {
-            int previousBestScore = statsManager.Data.BestScore;
-
-            statsManager.SyncBestScore(game.Score);
-
-            if (statsManager.Data.BestScore != previousBestScore)
-            {
-                SaveStats();
-            }
-        }
-
-        private void SaveStats()
-        {
-            statsStore.Save(statsManager.Data);
-        }
-
-        private void SaveCurrentGame()
-        {
-            gameStateStore.Save(game);
-        }
-
-        private void SaveAll()
-        {
-            SaveStats();
-            SaveCurrentGame();
         }
 
         private void PlayEndStateSound(
             GameActionResult result
         )
         {
-            if (result == null || gameAudio == null)
+            if (
+                result == null ||
+                gameAudio == null
+            )
             {
                 return;
             }
@@ -787,58 +1228,561 @@ namespace TwentyFortyEight.UI
             }
         }
 
-        private void RefreshButtons()
+        #endregion
+
+        #region Stats and settings
+
+        private void PrepareStatsForChangedAction(
+            GameActionResult result
+        )
         {
-            bool isSelecting =
-                selectionMode != SelectionMode.None;
-
-            bool canUsePowerups =
-                game.Status == GameStatus.Playing ||
-                game.Status == GameStatus.OutOfMoves;
-
-            if (undoButtonView != null)
+            if (
+                result == null ||
+                !result.Changed ||
+                !recordCurrentGameOnNextChangedAction
+            )
             {
-                undoButtonView.SetInteractable(
-                    canUsePowerups &&
-                    !isSelecting &&
-                    game.CanUseUndoPowerup()
-                );
-
-                undoButtonView.SetChargeCount(
-                    game.PowerupCharges.GetCharges(
-                        PowerupType.Undo
-                    )
-                );
+                return;
             }
 
-            if (killButtonView != null)
-            {
-                killButtonView.SetInteractable(
-                    canUsePowerups &&
-                    game.CanUseKillPowerup()
-                );
+            statsManager.RecordGameStarted();
 
-                killButtonView.SetChargeCount(
-                    game.PowerupCharges.GetCharges(
-                        PowerupType.Kill
-                    )
-                );
+            recordCurrentGameOnNextChangedAction =
+                false;
+        }
+
+        private void HandleClearStatsRequested()
+        {
+            if (isConfirmationDialogOpen)
+            {
+                return;
             }
 
-            if (nukeButtonView != null)
-            {
-                nukeButtonView.SetInteractable(
-                    canUsePowerups &&
-                    !isSelecting &&
-                    game.CanUseNukePowerup()
-                );
+            ShowConfirmation(
+                PendingConfirmationAction.ClearStats,
+                title: "Clear all stats?",
+                message:
+                    "Scores, game history, and power-up " +
+                    "totals will be permanently reset.\n\n" +
+                    "Your current board will remain.",
+                confirmLabel: "Clear Stats"
+            );
+        }
 
-                nukeButtonView.SetChargeCount(
-                    game.PowerupCharges.GetCharges(
-                        PowerupType.Nuke
-                    )
+        private void ClearStatsImmediately()
+        {
+            statsStore.Reset();
+
+            statsManager =
+                new StatsManager();
+
+            recordCurrentGameOnNextChangedAction =
+                true;
+
+            SaveStats();
+            RefreshAll();
+        }
+
+        private void HandleMusicVolumeChanged(
+            float value
+        )
+        {
+            if (settingsData == null)
+            {
+                return;
+            }
+
+            settingsData.MusicVolume =
+                Mathf.Clamp01(value);
+
+            gameAudio?.SetMusicVolume(
+                settingsData.MusicVolume
+            );
+        }
+
+        private void HandleSfxVolumeChanged(
+            float value
+        )
+        {
+            if (settingsData == null)
+            {
+                return;
+            }
+
+            settingsData.SfxVolume =
+                Mathf.Clamp01(value);
+
+            gameAudio?.SetSfxVolume(
+                settingsData.SfxVolume
+            );
+        }
+
+        private void ApplyAudioSettings()
+        {
+            if (
+                gameAudio == null ||
+                settingsData == null
+            )
+            {
+                return;
+            }
+
+            gameAudio.SetMusicVolume(
+                settingsData.MusicVolume
+            );
+
+            gameAudio.SetSfxVolume(
+                settingsData.SfxVolume
+            );
+        }
+
+        #endregion
+
+        #region Secondary screens
+
+        private void ShowStatsScreen()
+        {
+            if (isAnimating)
+            {
+                return;
+            }
+
+            ClearMoveQueue();
+            SaveStats();
+
+            selectionMode =
+                SelectionMode.None;
+
+            boardView.SetKillSelectionMode(
+                false
+            );
+
+            isStatsScreenOpen = true;
+            SuppressPointerInputUntilReleased();
+
+            if (mainScreenRoot != null)
+            {
+                mainScreenRoot.SetActive(false);
+            }
+
+            statsScreenView?.Show(
+                statsManager.Data
+            );
+        }
+
+        private void HideStatsScreen()
+        {
+            statsScreenView?.Hide();
+
+            if (mainScreenRoot != null)
+            {
+                mainScreenRoot.SetActive(true);
+            }
+
+            isStatsScreenOpen = false;
+            SuppressPointerInputUntilReleased();
+
+            RefreshAll(
+                immediateBanner: true
+            );
+        }
+
+        private void ShowSettingsScreen()
+        {
+            if (isAnimating)
+            {
+                return;
+            }
+
+            ClearMoveQueue();
+
+            selectionMode =
+                SelectionMode.None;
+
+            boardView.SetKillSelectionMode(
+                false
+            );
+
+            isSettingsScreenOpen = true;
+            SuppressPointerInputUntilReleased();
+
+            if (mainScreenRoot != null)
+            {
+                mainScreenRoot.SetActive(false);
+            }
+
+            settingsScreenView?.Show(
+                settingsData
+            );
+        }
+
+        private void HideSettingsScreen()
+        {
+            SaveSettings();
+
+            settingsScreenView?.Hide();
+
+            if (mainScreenRoot != null)
+            {
+                mainScreenRoot.SetActive(true);
+            }
+
+            isSettingsScreenOpen = false;
+            SuppressPointerInputUntilReleased();
+
+            RefreshAll(
+                immediateBanner: true
+            );
+        }
+
+        #endregion
+
+        #region Input
+
+        private void HandleKeyboardInput()
+        {
+            if (
+                Input.GetKeyDown(KeyCode.LeftArrow) ||
+                Input.GetKeyDown(KeyCode.A)
+            )
+            {
+                RequestMove(Direction.Left);
+            }
+            else if (
+                Input.GetKeyDown(KeyCode.RightArrow) ||
+                Input.GetKeyDown(KeyCode.D)
+            )
+            {
+                RequestMove(Direction.Right);
+            }
+            else if (
+                Input.GetKeyDown(KeyCode.UpArrow) ||
+                Input.GetKeyDown(KeyCode.W)
+            )
+            {
+                RequestMove(Direction.Up);
+            }
+            else if (
+                Input.GetKeyDown(KeyCode.DownArrow) ||
+                Input.GetKeyDown(KeyCode.S)
+            )
+            {
+                RequestMove(Direction.Down);
+            }
+        }
+
+        private void HandlePointerInput()
+        {
+            if (suppressPointerInputUntilRelease)
+            {
+                bool hasActiveMousePress =
+                    Input.GetMouseButton(0);
+
+                bool hasActiveTouchPress =
+                    Input.touchCount > 0;
+
+                if (
+                    !hasActiveMousePress &&
+                    !hasActiveTouchPress
+                )
+                {
+                    suppressPointerInputUntilRelease =
+                        false;
+
+                    ResetPointerState();
+                }
+
+                return;
+            }
+
+            if (Input.touchCount > 0)
+            {
+                Touch touch =
+                    Input.GetTouch(0);
+
+                switch (touch.phase)
+                {
+                    case TouchPhase.Began:
+                        BeginPointer(
+                            touch.position
+                        );
+                        break;
+
+                    case TouchPhase.Ended:
+                        EndPointer(
+                            touch.position
+                        );
+                        break;
+
+                    case TouchPhase.Canceled:
+                        ResetPointerState();
+                        break;
+                }
+
+                return;
+            }
+
+            if (Input.GetMouseButtonDown(0))
+            {
+                BeginPointer(
+                    Input.mousePosition
                 );
             }
+            else if (
+                Input.GetMouseButtonUp(0)
+            )
+            {
+                EndPointer(
+                    Input.mousePosition
+                );
+            }
+        }
+
+        private void BeginPointer(
+            Vector2 screenPosition
+        )
+        {
+            if (
+                !IsInsideSwipeArea(
+                    screenPosition
+                )
+            )
+            {
+                ResetPointerState();
+                return;
+            }
+
+            pointerDownPosition =
+                screenPosition;
+
+            isPointerDown = true;
+        }
+
+        private void EndPointer(
+            Vector2 screenPosition
+        )
+        {
+            if (!isPointerDown)
+            {
+                return;
+            }
+
+            isPointerDown = false;
+
+            Vector2 delta =
+                screenPosition -
+                pointerDownPosition;
+
+            if (
+                delta.magnitude <
+                minimumSwipeDistance
+            )
+            {
+                return;
+            }
+
+            Direction? direction =
+                GetSwipeDirection(delta);
+
+            if (direction.HasValue)
+            {
+                RequestMove(
+                    direction.Value
+                );
+            }
+        }
+
+        private bool IsInsideSwipeArea(
+            Vector2 screenPosition
+        )
+        {
+            Canvas canvas =
+                swipeArea.GetComponentInParent<Canvas>();
+
+            Camera uiCamera = null;
+
+            if (
+                canvas != null &&
+                canvas.renderMode !=
+                RenderMode.ScreenSpaceOverlay
+            )
+            {
+                uiCamera =
+                    canvas.worldCamera;
+            }
+
+            bool converted =
+                RectTransformUtility
+                    .ScreenPointToLocalPointInRectangle(
+                        swipeArea,
+                        screenPosition,
+                        uiCamera,
+                        out Vector2 localPosition
+                    );
+
+            if (!converted)
+            {
+                return false;
+            }
+
+            Rect allowedRect =
+                swipeArea.rect;
+
+            allowedRect.xMin -=
+                swipeAreaPadding;
+
+            allowedRect.xMax +=
+                swipeAreaPadding;
+
+            allowedRect.yMin -=
+                swipeAreaPadding;
+
+            allowedRect.yMax +=
+                swipeAreaPadding;
+
+            return allowedRect.Contains(
+                localPosition
+            );
+        }
+
+        private Direction? GetSwipeDirection(
+            Vector2 delta
+        )
+        {
+            Vector2 normalized =
+                delta.normalized;
+
+            if (
+                Mathf.Abs(normalized.x) >
+                Mathf.Abs(normalized.y)
+            )
+            {
+                if (
+                    Mathf.Abs(normalized.x) <
+                    swipeDirectionThreshold
+                )
+                {
+                    return null;
+                }
+
+                return normalized.x > 0f
+                    ? Direction.Right
+                    : Direction.Left;
+            }
+
+            if (
+                Mathf.Abs(normalized.y) <
+                swipeDirectionThreshold
+            )
+            {
+                return null;
+            }
+
+            return normalized.y > 0f
+                ? Direction.Up
+                : Direction.Down;
+        }
+
+        private void ResetPointerState()
+        {
+            pointerDownPosition =
+                Vector2.zero;
+
+            isPointerDown = false;
+        }
+
+        private void SuppressPointerInputUntilReleased()
+        {
+            ResetPointerState();
+
+            suppressPointerInputUntilRelease =
+                true;
+        }
+
+        private void ClearMoveQueue()
+        {
+            moveQueue.Clear();
+        }
+
+        #endregion
+
+        #region Continue, persistence, and validation
+
+        public void ContinueAfterWin()
+        {
+            if (isAnimating)
+            {
+                return;
+            }
+
+            ClearMoveQueue();
+
+            GameActionResult result =
+                game.ContinueAfterWin();
+
+            Debug.Log(result.ToString());
+
+            if (result.Changed)
+            {
+                SaveCurrentGame();
+            }
+
+            RefreshAll();
+        }
+
+        private void SaveStats()
+        {
+            statsStore.Save(
+                statsManager.Data
+            );
+        }
+
+        private void SaveCurrentGame()
+        {
+            gameStateStore.Save(game);
+        }
+
+        private void SaveAll()
+        {
+            SaveStats();
+            SaveCurrentGame();
+        }
+
+        private void SaveSettings()
+        {
+            if (
+                settingsStore == null ||
+                settingsData == null
+            )
+            {
+                return;
+            }
+
+            settingsStore.Save(
+                settingsData
+            );
+        }
+
+        private static bool HasNoRecordedStats(
+            StatsData data
+        )
+        {
+            if (data == null)
+            {
+                return true;
+            }
+
+            return
+                data.GamesStarted == 0 &&
+                data.GamesWon == 0 &&
+                data.GamesLost == 0 &&
+                data.BestScore == 0 &&
+                data.HighestTile == 0 &&
+                data.TotalMoves == 0 &&
+                data.TotalMerges == 0 &&
+                data.UndoUses == 0 &&
+                data.KillUses == 0 &&
+                data.NukeUses == 0;
         }
 
         private void ValidateReferences()
@@ -870,425 +1814,24 @@ namespace TwentyFortyEight.UI
                     "GameController is missing a Swipe Area reference."
                 );
             }
-        }
 
-        private void HandleKeyboardInput()
-        {
-            if (Input.GetKeyDown(KeyCode.LeftArrow) || Input.GetKeyDown(KeyCode.A))
+            if (confirmationDialogView == null)
             {
-                HandleMove(Direction.Left);
-            }
-            else if (Input.GetKeyDown(KeyCode.RightArrow) || Input.GetKeyDown(KeyCode.D))
-            {
-                HandleMove(Direction.Right);
-            }
-            else if (Input.GetKeyDown(KeyCode.UpArrow) || Input.GetKeyDown(KeyCode.W))
-            {
-                HandleMove(Direction.Up);
-            }
-            else if (Input.GetKeyDown(KeyCode.DownArrow) || Input.GetKeyDown(KeyCode.S))
-            {
-                HandleMove(Direction.Down);
-            }
-        }
-
-        private void HandlePointerInput()
-        {
-            if (suppressPointerInputUntilRelease)
-            {
-                bool hasActiveMousePress = Input.GetMouseButton(0);
-                bool hasActiveTouchPress = Input.touchCount > 0;
-
-                if (!hasActiveMousePress && !hasActiveTouchPress)
-                {
-                    suppressPointerInputUntilRelease = false;
-                    ResetPointerState();
-                }
-
-                return;
-            }
-            
-            if (Input.touchCount > 0)
-            {
-                Touch touch = Input.GetTouch(0);
-
-                if (suppressPointerInputUntilRelease)
-                {
-                    if (
-                        touch.phase == TouchPhase.Ended ||
-                        touch.phase == TouchPhase.Canceled
-                    )
-                    {
-                        suppressPointerInputUntilRelease = false;
-                        isPointerDown = false;
-                    }
-
-                    return;
-                }
-
-                if (touch.phase == TouchPhase.Began)
-                {
-                    BeginPointer(touch.position);
-                }
-                else if (touch.phase == TouchPhase.Ended)
-                {
-                    EndPointer(touch.position);
-                }
-                else if (touch.phase == TouchPhase.Canceled)
-                {
-                    ResetPointerState();
-                }
-
-                return;
+                throw new InvalidOperationException(
+                    "GameController is missing a " +
+                    "ConfirmationDialogView reference."
+                );
             }
 
-            if (suppressPointerInputUntilRelease)
+            if (bannerMessageView == null)
             {
-                if (Input.GetMouseButtonUp(0))
-                {
-                    suppressPointerInputUntilRelease = false;
-                    isPointerDown = false;
-                }
-
-                return;
-            }
-
-            if (Input.GetMouseButtonDown(0))
-            {
-                BeginPointer(Input.mousePosition);
-            }
-            else if (Input.GetMouseButtonUp(0))
-            {
-                EndPointer(Input.mousePosition);
-            }
-        }
-
-        private bool IsInsideSwipeArea(Vector2 screenPosition)
-        {
-            if (swipeArea == null)
-            {
-                return false;
-            }
-
-            Canvas canvas = swipeArea.GetComponentInParent<Canvas>();
-
-            Camera uiCamera = null;
-
-            if (
-                canvas != null &&
-                canvas.renderMode != RenderMode.ScreenSpaceOverlay
-            )
-            {
-                uiCamera = canvas.worldCamera;
-            }
-
-            bool converted = RectTransformUtility.ScreenPointToLocalPointInRectangle(
-                swipeArea,
-                screenPosition,
-                uiCamera,
-                out Vector2 localPosition
-            );
-
-            if (!converted)
-            {
-                return false;
-            }
-
-            Rect allowedRect = swipeArea.rect;
-
-            allowedRect.xMin -= swipeAreaPadding;
-            allowedRect.xMax += swipeAreaPadding;
-            allowedRect.yMin -= swipeAreaPadding;
-            allowedRect.yMax += swipeAreaPadding;
-
-            return allowedRect.Contains(localPosition);
-        }
-
-        private void BeginPointer(Vector2 screenPosition)
-        {
-            if (!IsInsideSwipeArea(screenPosition))
-            {
-                ResetPointerState();
-                return;
-            }
-
-            pointerDownPosition = screenPosition;
-            isPointerDown = true;
-        }
-
-        private void EndPointer(Vector2 screenPosition)
-        {
-            if (!isPointerDown)
-            {
-                return;
-            }
-
-            isPointerDown = false;
-
-            Vector2 delta = screenPosition - pointerDownPosition;
-
-            if (delta.magnitude < minimumSwipeDistance)
-            {
-                return;
-            }
-
-            Direction? direction = GetSwipeDirection(delta);
-
-            if (direction.HasValue)
-            {
-                HandleMove(direction.Value);
-            }
-        }
-
-        private Direction? GetSwipeDirection(Vector2 delta)
-        {
-            Vector2 normalized = delta.normalized;
-
-            if (Mathf.Abs(normalized.x) > Mathf.Abs(normalized.y))
-            {
-                if (Mathf.Abs(normalized.x) < swipeDirectionThreshold)
-                {
-                    return null;
-                }
-
-                return normalized.x > 0
-                    ? Direction.Right
-                    : Direction.Left;
-            }
-
-            if (Mathf.Abs(normalized.y) < swipeDirectionThreshold)
-            {
-                return null;
-            }
-
-            return normalized.y > 0
-                ? Direction.Up
-                : Direction.Down;
-        }
-    
-        private void ResetPointerState()
-        {
-            pointerDownPosition = Vector2.zero;
-            isPointerDown = false;
-        }
-
-        private void SuppressPointerInputUntilReleased()
-        {
-            ResetPointerState();
-            suppressPointerInputUntilRelease = true;
-        }
-
-        private void ClearMoveQueue()
-        {
-            moveQueue.Clear();
-        }
-
-        public void ContinueAfterWin()
-        {
-            if (isAnimating)
-            {
-                return;
-            }
-
-            ClearMoveQueue();
-
-            GameActionResult result = game.ContinueAfterWin();
-
-            Debug.Log(result.ToString());
-
-            if (result.Changed)
-            {
-                SaveCurrentGame();
-            }
-
-            RefreshAll();
-        }
-
-        private void ApplyAudioSettings()
-        {
-            if (
-                gameAudio == null ||
-                settingsData == null
-            )
-            {
-                return;
-            }
-
-            gameAudio.SetMusicVolume(
-                settingsData.MusicVolume
-            );
-
-            gameAudio.SetSfxVolume(
-                settingsData.SfxVolume
-            );
-        }
-
-        private void ShowStatsScreen()
-        {
-            if (isAnimating)
-            {
-                return;
-            }
-
-            ClearMoveQueue();
-
-            SaveStats();
-
-            isStatsScreenOpen = true;
-            SuppressPointerInputUntilReleased();
-
-            if (mainScreenRoot != null)
-            {
-                mainScreenRoot.SetActive(false);
-            }
-
-            if (statsScreenView != null)
-            {
-                statsScreenView.Show(statsManager.Data);
-            }
-        }
-
-        private void HideStatsScreen()
-        {
-            if (statsScreenView != null)
-            {
-                statsScreenView.Hide();
-            }
-
-            if (mainScreenRoot != null)
-            {
-                mainScreenRoot.SetActive(true);
-            }
-
-            isStatsScreenOpen = false;
-            SuppressPointerInputUntilReleased();
-
-            RefreshAll();
-        }
-
-        private void ShowSettingsScreen()
-        {
-            if (isAnimating)
-            {
-                return;
-            }
-
-            ClearMoveQueue();
-
-            isSettingsScreenOpen = true;
-            SuppressPointerInputUntilReleased();
-
-            if (mainScreenRoot != null)
-            {
-                mainScreenRoot.SetActive(false);
-            }
-
-            if (settingsScreenView != null)
-            {
-                settingsScreenView.Show(
-                    settingsData
+                throw new InvalidOperationException(
+                    "GameController is missing a " +
+                    "BannerMessageView reference."
                 );
             }
         }
 
-        private void HideSettingsScreen()
-        {
-            SaveSettings();
-
-            if (settingsScreenView != null)
-            {
-                settingsScreenView.Hide();
-            }
-
-            if (mainScreenRoot != null)
-            {
-                mainScreenRoot.SetActive(true);
-            }
-
-            isSettingsScreenOpen = false;
-            SuppressPointerInputUntilReleased();
-
-            RefreshAll();
-        }
-
-        private void HandleMusicVolumeChanged(
-            float value
-        )
-        {
-            if (settingsData == null)
-            {
-                return;
-            }
-
-            settingsData.MusicVolume =
-                Mathf.Clamp01(value);
-
-            if (gameAudio != null)
-            {
-                gameAudio.SetMusicVolume(
-                    settingsData.MusicVolume
-                );
-            }
-        }
-
-        private void HandleSfxVolumeChanged(
-            float value
-        )
-        {
-            if (settingsData == null)
-            {
-                return;
-            }
-
-            settingsData.SfxVolume =
-                Mathf.Clamp01(value);
-
-            if (gameAudio != null)
-            {
-                gameAudio.SetSfxVolume(
-                    settingsData.SfxVolume
-                );
-            }
-        }
-
-        private void HandleClearStatsRequested()
-        {
-            // The confirmation dialog will call the
-            // actual reset in the next implementation step.
-            Debug.Log(
-                "Clear Stats requested. " +
-                "Waiting for confirmation dialog."
-            );
-        }
-
-        private void SaveSettings()
-        {
-            if (
-                settingsStore == null ||
-                settingsData == null
-            )
-            {
-                return;
-            }
-
-            settingsStore.Save(settingsData);
-        }
-
-        private void OnApplicationPause(bool pauseStatus)
-        {
-            if (!pauseStatus)
-            {
-                return;
-            }
-
-            SaveAll();
-            SaveSettings();
-        }
-
-        private void OnApplicationQuit()
-        {
-            SaveAll();
-            SaveSettings();
-        }
+        #endregion
     }
 }

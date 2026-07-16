@@ -31,6 +31,22 @@ namespace TwentyFortyEight.UI
 
         [SerializeField] private float mergeScale = 1.15f;
 
+        [Header("Selection")]
+        [SerializeField]
+        private GameObject killSelectionHighlight;
+
+        public void SetKillSelectionMode(
+            bool active
+        )
+        {
+            if (killSelectionHighlight != null)
+            {
+                killSelectionHighlight.SetActive(
+                    active
+                );
+            }
+        }
+
         private readonly Dictionary<CellPosition, TileView> tileViews =
             new Dictionary<CellPosition, TileView>();
 
