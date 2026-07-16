@@ -7,6 +7,7 @@ using UnityEngine.UI;
 using TwentyFortyEight.Stats;
 using TwentyFortyEight.Persistence;
 using TwentyFortyEight.Audio;
+using TwentyFortyEight.Settings;
 
 namespace TwentyFortyEight.UI
 {
@@ -21,6 +22,7 @@ namespace TwentyFortyEight.UI
         [Header("Screens")]
         [SerializeField] private GameObject mainScreenRoot;
         [SerializeField] private StatsScreenView statsScreenView;
+        [SerializeField] private SettingsScreenView settingsScreenView;
 
         [Header("Views")]
         [SerializeField] private BoardView boardView;
@@ -33,6 +35,7 @@ namespace TwentyFortyEight.UI
         [SerializeField] private PowerupButtonView killButtonView;
         [SerializeField] private PowerupButtonView nukeButtonView;
         [SerializeField] private Button statsButton;
+        [SerializeField] private Button settingsButton;
 
         [Header("Initial Powerups")]
         [SerializeField, Range(0, PowerupCharges.DefaultMaxUndoCharges)]
@@ -64,15 +67,28 @@ namespace TwentyFortyEight.UI
         private StatsStore statsStore;
         private StatsManager statsManager;
         private GameStateStore gameStateStore;
+        private GameSettingsStore settingsStore;
+        private GameSettingsData settingsData;
         private SelectionMode selectionMode;
         private Vector2 pointerDownPosition;
         private bool isPointerDown;
         private bool suppressPointerInputUntilRelease;
         private bool isStatsScreenOpen;
+        private bool isSettingsScreenOpen;
         private bool isAnimating;
 
         private readonly Queue<Direction> moveQueue =
             new Queue<Direction>();
+
+        private bool IsSecondaryScreenOpen
+        {
+            get
+            {
+                return
+                    isStatsScreenOpen ||
+                    isSettingsScreenOpen;
+            }
+        }
 
         private bool isProcessingMoveQueue;
 
@@ -84,6 +100,12 @@ namespace TwentyFortyEight.UI
 
             StatsData statsData = statsStore.Load();
             statsManager = new StatsManager(statsData);
+
+            settingsStore =
+                new GameSettingsStore();
+
+            settingsData =
+                settingsStore.Load();
 
             PowerupCharges powerupCharges =
                 new PowerupCharges(
@@ -152,6 +174,28 @@ namespace TwentyFortyEight.UI
             {
                 statsScreenView.BackClicked += HideStatsScreen;
             }
+
+            if (settingsButton != null)
+            {
+                settingsButton.onClick.AddListener(
+                    ShowSettingsScreen
+                );
+            }
+
+            if (settingsScreenView != null)
+            {
+                settingsScreenView.BackClicked +=
+                    HideSettingsScreen;
+
+                settingsScreenView.MusicVolumeChanged +=
+                    HandleMusicVolumeChanged;
+
+                settingsScreenView.SfxVolumeChanged +=
+                    HandleSfxVolumeChanged;
+
+                settingsScreenView.ClearStatsRequested +=
+                    HandleClearStatsRequested;
+            }
         }
 
         private void Start()
@@ -166,12 +210,25 @@ namespace TwentyFortyEight.UI
                 statsScreenView.Hide();
             }
 
+            if (settingsScreenView != null)
+            {
+                settingsScreenView.Hide();
+
+                // Enable this after the confirmation
+                // dialog is implemented.
+                settingsScreenView.SetClearStatsInteractable(
+                    false
+                );
+            }
+
+            ApplyAudioSettings();
+
             RefreshAll();
         }
 
         private void Update()
         {
-            if (isStatsScreenOpen)
+            if (IsSecondaryScreenOpen)
             {
                 ResetPointerState();
                 return;
@@ -240,7 +297,29 @@ namespace TwentyFortyEight.UI
             {
                 statsScreenView.BackClicked -= HideStatsScreen;
             }
-            
+
+            if (settingsButton != null)
+            {
+                settingsButton.onClick.RemoveListener(
+                    ShowSettingsScreen
+                );
+            }
+
+            if (settingsScreenView != null)
+            {
+                settingsScreenView.BackClicked -=
+                    HideSettingsScreen;
+
+                settingsScreenView.MusicVolumeChanged -=
+                    HandleMusicVolumeChanged;
+
+                settingsScreenView.SfxVolumeChanged -=
+                    HandleSfxVolumeChanged;
+
+                settingsScreenView.ClearStatsRequested -=
+                    HandleClearStatsRequested;
+            }
+
             moveQueue.Clear();
             isProcessingMoveQueue = false;
             isAnimating = false;
@@ -410,7 +489,7 @@ namespace TwentyFortyEight.UI
 
         private void RequestMove(Direction direction)
         {
-            if (isStatsScreenOpen)
+            if (IsSecondaryScreenOpen)
             {
                 return;
             }
@@ -464,7 +543,7 @@ namespace TwentyFortyEight.UI
             {
                 if (
                     game.Status != GameStatus.Playing ||
-                    isStatsScreenOpen ||
+                    IsSecondaryScreenOpen ||
                     selectionMode != SelectionMode.None
                 )
                 {
@@ -1037,6 +1116,25 @@ namespace TwentyFortyEight.UI
             }
         }
 
+        private void ApplyAudioSettings()
+        {
+            if (
+                gameAudio == null ||
+                settingsData == null
+            )
+            {
+                return;
+            }
+
+            gameAudio.SetMusicVolume(
+                settingsData.MusicVolume
+            );
+
+            gameAudio.SetSfxVolume(
+                settingsData.SfxVolume
+            );
+        }
+
         private void ShowStatsScreen()
         {
             if (isAnimating)
@@ -1080,6 +1178,114 @@ namespace TwentyFortyEight.UI
             RefreshAll();
         }
 
+        private void ShowSettingsScreen()
+        {
+            if (isAnimating)
+            {
+                return;
+            }
+
+            ClearMoveQueue();
+
+            isSettingsScreenOpen = true;
+            SuppressPointerInputUntilReleased();
+
+            if (mainScreenRoot != null)
+            {
+                mainScreenRoot.SetActive(false);
+            }
+
+            if (settingsScreenView != null)
+            {
+                settingsScreenView.Show(
+                    settingsData
+                );
+            }
+        }
+
+        private void HideSettingsScreen()
+        {
+            SaveSettings();
+
+            if (settingsScreenView != null)
+            {
+                settingsScreenView.Hide();
+            }
+
+            if (mainScreenRoot != null)
+            {
+                mainScreenRoot.SetActive(true);
+            }
+
+            isSettingsScreenOpen = false;
+            SuppressPointerInputUntilReleased();
+
+            RefreshAll();
+        }
+
+        private void HandleMusicVolumeChanged(
+            float value
+        )
+        {
+            if (settingsData == null)
+            {
+                return;
+            }
+
+            settingsData.MusicVolume =
+                Mathf.Clamp01(value);
+
+            if (gameAudio != null)
+            {
+                gameAudio.SetMusicVolume(
+                    settingsData.MusicVolume
+                );
+            }
+        }
+
+        private void HandleSfxVolumeChanged(
+            float value
+        )
+        {
+            if (settingsData == null)
+            {
+                return;
+            }
+
+            settingsData.SfxVolume =
+                Mathf.Clamp01(value);
+
+            if (gameAudio != null)
+            {
+                gameAudio.SetSfxVolume(
+                    settingsData.SfxVolume
+                );
+            }
+        }
+
+        private void HandleClearStatsRequested()
+        {
+            // The confirmation dialog will call the
+            // actual reset in the next implementation step.
+            Debug.Log(
+                "Clear Stats requested. " +
+                "Waiting for confirmation dialog."
+            );
+        }
+
+        private void SaveSettings()
+        {
+            if (
+                settingsStore == null ||
+                settingsData == null
+            )
+            {
+                return;
+            }
+
+            settingsStore.Save(settingsData);
+        }
+
         private void OnApplicationPause(bool pauseStatus)
         {
             if (!pauseStatus)
@@ -1088,11 +1294,13 @@ namespace TwentyFortyEight.UI
             }
 
             SaveAll();
+            SaveSettings();
         }
 
         private void OnApplicationQuit()
         {
             SaveAll();
+            SaveSettings();
         }
     }
 }
