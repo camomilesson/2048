@@ -6,6 +6,7 @@ using UnityEngine;
 using UnityEngine.UI;
 using TwentyFortyEight.Stats;
 using TwentyFortyEight.Persistence;
+using TwentyFortyEight.Audio;
 
 namespace TwentyFortyEight.UI
 {
@@ -55,6 +56,9 @@ namespace TwentyFortyEight.UI
 
         [Header("VFX")]
         [SerializeField] private UiVfxController uiVfx;
+
+        [Header("Audio")]
+        [SerializeField] private GameAudio gameAudio;
 
         private GameManager game;
         private StatsStore statsStore;
@@ -130,6 +134,8 @@ namespace TwentyFortyEight.UI
             }
 
             boardView.TileClicked += HandleTileClicked;
+            boardView.MergeAnimationStarted +=
+                HandleMergeAnimationStarted;
 
             if (gameStateOverlayView != null)
             {
@@ -215,6 +221,8 @@ namespace TwentyFortyEight.UI
             if (boardView != null)
             {
                 boardView.TileClicked -= HandleTileClicked;
+                boardView.MergeAnimationStarted -=
+                    HandleMergeAnimationStarted;
             }
 
             if (gameStateOverlayView != null)
@@ -389,6 +397,7 @@ namespace TwentyFortyEight.UI
                 game.Board
             );
 
+            PlayEndStateSound(result);
             RefreshGameStateOverlay();
 
             SetAnimationState(false);
@@ -492,13 +501,14 @@ namespace TwentyFortyEight.UI
                 game.Score
             );
 
-            /*
-            * An ineffective buffered direction is simply discarded.
-            * The queue immediately advances to the next direction.
-            */
             if (!result.Changed)
             {
                 yield break;
+            }
+
+            if (gameAudio != null)
+            {
+                gameAudio.PlaySwipe();
             }
 
             UpdateBestScore();
@@ -508,6 +518,8 @@ namespace TwentyFortyEight.UI
                 game.Board,
                 result
             );
+
+            PlayEndStateSound(result);
 
             scoreView.SetScores(
                 game.Score,
@@ -615,6 +627,7 @@ namespace TwentyFortyEight.UI
                 game.Board
             );
 
+            PlayEndStateSound(result);
             RefreshGameStateOverlay();
 
             SetAnimationState(false);
@@ -678,6 +691,25 @@ namespace TwentyFortyEight.UI
         {
             SaveStats();
             SaveCurrentGame();
+        }
+
+        private void PlayEndStateSound(
+            GameActionResult result
+        )
+        {
+            if (result == null || gameAudio == null)
+            {
+                return;
+            }
+
+            if (result.ReachedTargetThisAction)
+            {
+                gameAudio.PlayWin();
+            }
+            else if (result.GameOverThisAction)
+            {
+                gameAudio.PlayLose();
+            }
         }
 
         private void RefreshButtons()
@@ -995,6 +1027,14 @@ namespace TwentyFortyEight.UI
             }
 
             RefreshAll();
+        }
+
+        private void HandleMergeAnimationStarted()
+        {
+            if (gameAudio != null)
+            {
+                gameAudio.PlayMerge();
+            }
         }
 
         private void ShowStatsScreen()

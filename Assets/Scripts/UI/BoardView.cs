@@ -35,6 +35,7 @@ namespace TwentyFortyEight.UI
             new Dictionary<CellPosition, TileView>();
 
         public event Action<CellPosition> TileClicked;
+        public event Action MergeAnimationStarted;
 
         public IEnumerator AnimateMove(
             BoardModel finalBoard,
@@ -86,6 +87,11 @@ namespace TwentyFortyEight.UI
             GameActionResult result
         )
         {
+            if (result.MergeCount > 0)
+            {
+                MergeAnimationStarted?.Invoke();
+            }
+            
             for (int i = 0; i < result.MergePositions.Count; i++)
             {
                 CellPosition position =
